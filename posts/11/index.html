@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+  <script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/public/pygments.css">
+  <link rel="stylesheet" type="text/css" href="/public/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  
+  
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['\\(', '\\)']]
+  }
+};
+</script>
+<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-MML-AM_CHTML"> </script>
+
+  <link rel="alternate" type="application/rss+xml" title="Hugo's Blog" href="/feed.xml">
+  <link rel="icon" href="/posts/11/icon.png">
+  <title>Sudoku solving</title>
+</head>
+<body>
+  
+
+  
+    <header>
+    <div class="logo"><a href="/">Hugo's Blog</a></div>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <nav>
+        <a href="/">Home</a>
+        <a href="/posts">Posts</a>
+        <a href="/feed.xml">RSS</a>
+    </nav>
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+</header>
+  
+
+  <div class="content">
+    <div class="content-page">
+    
+  <div class="code-languages">
+    
+    <div class="code-language">python</div>
+    
+  </div>
+  <h1>Sudoku solving</h1>
+  
+
+<h2>Goal</h2>
+
+<p>
+    Today we are going to attempt to automatically solve a sudoku using a computer program. 
+    I've never met anyone that doesn't know what a sudoku is, but for completeness sake: a sudoku is
+    a puzzle that takes place on a 9x9 grid where every cell has to be given a number between 
+    1 and 9 such that no row, column, or any of the 9 3x3 subsquares, contain duplicates.
+    A sudoku that still has to be solved has a few digits already pre filled. Hardest sudokus have very 
+    few slots pre filled; Sometimes even requiring you to guess what number goes in a slot, 
+    which might lead to conflicts later requiring you to backtrack. 
+</p>
+
+<p>
+    Obviously we want to be able to complete this task of solving a sudoku rather quickly; sub second
+    sounds like a reasonable, yet challenging goal. Let's specify the input for our program. To make 
+    it also human readable let's divide the input over 9 lines, each containing the 9 digits of that row.
+    For slots that have no value yet we simply enter use a 0. For example:
+</p>
+
+
+003020600<br>
+900305001<br>
+001806400<br>
+008102900<br>
+700000008<br>
+006708200<br>
+002609500<br>
+800203009<br>
+005010300<br>
+
+<h2>ILP models introduced, work life balance</h2>
+
+<p>
+    Arguably the closest thing that algorithm designers have to a cheat code, is the insane versatility and speed 
+    that Integer Linear Programming (ILP) can bring to the table.  
+    Many hard problems can be modelled as an ILP and solved rather efficiently. Even problems that are known
+    to be unsolvable in polynomial time* - like the travelling salesman problem - can often scale fairly well as an 
+    ILP model before the theory catches up. Obviously this does mean, that an ILP solver cannot run in
+    polynomial time either. But, considering a sudoku is always of the same size, you could say that our program
+    runs in \( O(1) \) time complexity :)
+</p>
+
+<p>
+    <small>*Assuming P &#8800; NP, but that is a rabbit hole for another time</small>
+</p>
+
+<p>
+    The general process of creating an ILP model is to define a number of variables,
+    the maximization or minimization of some expression, and a set of bounding constraints. 
+    Let's conjure up a very simple example. 
+</p>
+
+<p>
+    During the pandemic we have all learned how important it is to have a good work life balance. As
+    a hedonist, I want to have as much fun as possible. On the other hand, the Jordan Peterson in me says that I need to
+    be responsible. How can I satisfy these two conflicting interests? Let's first try to quantify
+    our scenario in a little table.
+</p>
+
+    <table>
+        <tr>
+            <th><i>Activity</i></th>
+            <th>Social</th>
+            <th>Work</th>
+            <th>Rest</th>
+            <th>Effort</th>
+        </tr>
+        <tr>
+            <td>Lunch meeting</td>
+            <td>30</td>
+            <td>40</td>
+            <td>25</td>
+            <td>60</td>
+        </tr>
+        <tr>
+            <td>Working in the library</td>
+            <td>5</td>
+            <td>70</td>
+            <td>10</td>
+            <td>20</td>
+        </tr>
+    </table>
+
+<p>
+    We want to spend a certain amount of time on each of the activities. Let's say we spend \(x\) hours
+    on lunch meetings, and \(y\) hours on working in the library. If we want the combination that gives
+    us the least total effort - which is obviously our goal - then we can simply spend 0 hours doing
+    both. However, the official unofficial guide of being responsible says that we have to gain at least
+    50 'social points' everyday, 100 working, and 30 resting. In other words, we have to
+    consider the following constraints:
+</p>
+
+\[
+    x * 30 + y * 5  \geq 50 \\
+    x * 40 + y * 70 \geq 100 \\
+    x * 25 + y * 10 \geq 30 \\
+\]
+
+<p>
+    We want these constraints to hold whilst also minimizing the effort expressed by \(x * 60 + y * 20\).
+</p>
+
+<p>
+    Violating any of the constraints is no option. As a result, we can run into situation in which there is no solution
+    because two constraints cannot both be satisfied at once. In this example that is not true however. We can plot the space of
+    feasible solutions quite easily since we are only dealing with two variables at the moment.
+</p>
+
+<img src="feasible.png" style="width:50%;min-width:300px" >
+
+<p>
+    As you can see, all 3 constraints divide the plane up in two. The side that is filled satisfies that constraint. To
+    satisfy all constraints, we have to take the intersection of these 3 filled subplains. Within that space we are free to find
+    our minimization. 
+</p>
+
+<p>
+    The algorithms that can solve these systems, such as simplex, are outside the scope of this post. Frankly, I wouldn't be
+    able to do them justice as I have a hard time understanding them myself. However,     a free python package already exists that
+    does the hard work for us: <a href="https://www.python-mip.com/">python-mip</a> (<code>pip3 install python-mip</code>).
+    It allows us to simply create the variables, add the constraints, specify the object, and finally run the solver.
+</p>
+
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">mip</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">minimize</span>
+
+<span class="c1"># create the model</span>
+<span class="n">m</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span><span class="s2">&quot;Balanced Life&quot;</span><span class="p">)</span>
+
+<span class="c1"># declare two variables as part of the model</span>
+<span class="c1"># the default is a continuous fractional, but we can also</span>
+<span class="c1"># create exclusively whole number variables (integers) or binary ones</span>
+<span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="o">=</span> <span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">add_var</span><span class="p">(),</span> <span class="n">m</span><span class="o">.</span><span class="n">add_var</span><span class="p">())</span>
+
+<span class="c1"># x and y must be natural numbers (we can&#39;t spend negative hours on something)</span>
+<span class="n">m</span> <span class="o">+=</span> <span class="n">x</span> <span class="o">&gt;=</span> <span class="mi">0</span>
+<span class="n">m</span> <span class="o">+=</span> <span class="n">y</span> <span class="o">&gt;=</span> <span class="mi">0</span>
+
+<span class="c1"># social, work, and rest constraints must be met</span>
+<span class="n">m</span> <span class="o">+=</span> <span class="n">x</span><span class="o">*</span><span class="mi">30</span> <span class="o">+</span> <span class="n">y</span><span class="o">*</span><span class="mi">5</span>  <span class="o">&gt;=</span> <span class="mi">50</span>
+<span class="n">m</span> <span class="o">+=</span> <span class="n">x</span><span class="o">*</span><span class="mi">40</span> <span class="o">+</span> <span class="n">y</span><span class="o">*</span><span class="mi">70</span> <span class="o">&gt;=</span> <span class="mi">100</span>
+<span class="n">m</span> <span class="o">+=</span> <span class="n">x</span><span class="o">*</span><span class="mi">25</span> <span class="o">+</span> <span class="n">y</span><span class="o">*</span><span class="mi">10</span> <span class="o">&gt;=</span> <span class="mi">30</span>
+
+<span class="c1"># objective is to minimize total effort</span>
+<span class="n">m</span><span class="o">.</span><span class="n">objective</span> <span class="o">=</span> <span class="n">minimize</span><span class="p">(</span><span class="n">x</span><span class="o">*</span><span class="mi">60</span> <span class="o">+</span> <span class="n">y</span><span class="o">*</span><span class="mi">20</span><span class="p">)</span>
+
+<span class="c1"># solve the model</span>
+<span class="n">m</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+
+<span class="c1"># print the solution</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Optimal solution: x = </span><span class="si">{</span><span class="n">x</span><span class="o">.</span><span class="n">x</span><span class="si">}</span><span class="s2">, y=</span><span class="si">{</span><span class="n">y</span><span class="o">.</span><span class="n">x</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Optimal solution: x = 1.5789473684210524, y=0.5263157894736844</span>
+</pre></div>
+
+</p>
+
+<p>
+    And so we find that the optimal solution is to spend about 1.57 hours in a lunch meeting, but also 0.52 hours in the library.
+</p>
+
+<img src="maths.jpg" style="width:70%;min-width:300px">
+
+
+<h2>Modeling the sudoku</h2>
+
+<p>
+Although I hope that the previous example was able to shed some light on what kind of system we can solve, I can understand that it is 
+not immediately obvious how we can model a sudoku in such a system.
+
+After all, a sudoku seems like it's exclusively a set of uniqueness constraints; 
+We don't really care if a field has a value larger than something. We could say that we want a column, row or 3x3 (let's
+call them units) to sum up to exactly 45. Using two inequality constraints we can easily model equality: 
+\( x \leq y \wedge x \geq y \implies x = y \). However, these constraints are not strict enough; Not any sequence of 9 elements that sum
+up to 45 will do. What we want to do is:
+
+\[
+\text{let sudoku :: [int]} \\
+\text{let units :: [[index]]} \\
+\forall u \in \text{units} : \forall i, j \in u : s[i] \neq s[j]
+\]
+
+Since \(\neq\) is obviously commutative, we can be a bit more conservative and prevent that we add the constraint twice.
+This will also help keep the code a bit faster since the running time of an ILP depends heavily on the number of constraints.
+
+\[
+\text{let sudoku :: [int]} \\
+\text{let units :: [[index]]} \\
+\forall u \in \text{units} : \forall i, j \in u : i < j \implies s[i] \neq s[j]
+\]
+
+</p>
+
+
+<h3> Hey computer, \( x \neq y\)! </h3>
+
+<p>
+    We need to find a way to model \( \neq \) with just \( \leq \) and \( \geq \).
+    The first insight we need is that \(x > y \implies x \geq y + 1 \). This fact allows us to model strict inequalities.
+    We then could say if x and y are not equal, x must be either strictly smaller or strictly larger: 
+    \(x \neq y \implies x \leq y - 1 \vee x \geq y + 1 \).
+</p>
+    
+<p>
+    Seemingly, we are still stuck; ILP's do not support disjunction. 
+    However, upon closer inspection we can be even more precise. 
+    Namely, the left and right side imply each other's negation (if \(x < y\) then we know that \(x > y\) is false).
+    Thus, the only way that the whole expression can hold is if only 1 of the two sub expressions hold. 
+    We can therefore use a XOR operator instead: 
+</p>
+
+    \[ 
+    x \leq y - 1 \oplus x \geq y + 1
+    \]
+
+    <p>
+        This is good news because a XOR might be something we can model in an ILP using binary variables. 
+        Namely, we can use an auxiliary binary variable to choose between one of the two options. 
+        This variable needs to ensure that based on whether it is 1 or 0, the corresponding expression becomes trivially true. 
+    </p>
+
+    <p>
+        One way to do this in our case is to capitalize on the fact that values are always in the range \([0,9]\).
+        That way know that if we add 10 to the right side of an expression, that the left - assuming it is an atomic 
+        variable - is always smaller. Similarly, in the second expression we can subtract 10 when the negation of the binary
+        variable is true.
+    </p>
+
+    \[
+    \text{let } b \in [0,1] \\
+    x \leq y - 1 + 10 * b \wedge x \geq y + 1 - 10 * (1-b)
+    \]
+
+    <p>
+    We now have an expression that is satisfiable if and only if \(x \neq y \). The conjunction is simply handled by adding two constraints.    Let's already build a simple helper function that we can use later.
+    </p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1"># Add a x != y constraint to model m</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">add_unequality</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+    <span class="n">bvar</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">add_var</span><span class="p">(</span><span class="n">var_type</span><span class="o">=</span><span class="n">BINARY</span><span class="p">)</span>                       
+    <span class="n">m</span> <span class="o">+=</span> <span class="n">x</span> <span class="o">&lt;=</span> <span class="n">y</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">+</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">bvar</span>             
+    <span class="n">m</span> <span class="o">+=</span> <span class="n">x</span> <span class="o">&gt;=</span> <span class="n">y</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">-</span> <span class="mi">10</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">bvar</span><span class="p">)</span>
+</pre></div>
+
+</p>
+
+<h2>Building the program</h2>
+
+<p>
+    Let's start with building our main program. We need to import some things from mip as well as itertools. 
+    itertools is just a collection of helper functions that will prove helpful later. It does not require additional packages.
+</p>
+
+<p>
+    We'll just hardcode the sudoku for ease of use. Finally we can also create a secondary
+    list that contains a variable corresponding to each digit in the sudoku. 
+    This is the list that we will mostly we working with.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">mip</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">INTEGER</span><span class="p">,</span> <span class="n">maximize</span><span class="p">,</span> <span class="n">BINARY</span>      
+<span class="kn">import</span><span class="w"> </span><span class="nn">itertools</span>
+
+<span class="n">sudoku</span> <span class="o">=</span> <span class="p">[</span> <span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span>
+           <span class="mi">9</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span>
+           <span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">8</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span>
+           <span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">8</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">9</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span>
+           <span class="mi">7</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">8</span><span class="p">,</span>
+           <span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">7</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">8</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span>
+           <span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">9</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span>
+           <span class="mi">8</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">9</span><span class="p">,</span>
+           <span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">]</span>
+
+<span class="n">m</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span><span class="s2">&quot;Sudoku&quot;</span><span class="p">)</span>
+
+<span class="c1"># create an integer variable in range [0,9] for each field in the sudoku</span>
+<span class="n">allvars</span> <span class="o">=</span> <span class="p">[</span><span class="n">m</span><span class="o">.</span><span class="n">add_var</span><span class="p">(</span><span class="n">var_type</span><span class="o">=</span><span class="n">INTEGER</span><span class="p">,</span> <span class="n">lb</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="n">ub</span> <span class="o">=</span> <span class="mi">9</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">sudoku</span><span class="p">]</span>
+</pre></div>
+
+</p>
+
+We can already add equality constraints for the numbers that are fixed in our input. After all, their values are already known so we
+should constrain them to a constant value. Remember how easy it was to implement equality using two inequalities? That is probably the
+reason that mip supports them natively.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">for</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">sudoku</span><span class="p">,</span> <span class="n">allvars</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">i</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">m</span> <span class="o">+=</span> <span class="n">var</span> <span class="o">==</span> <span class="n">i</span>
+</pre></div>
+
+</p>
+
+Before continuing adding all the unequality constraints, let's add a few helper functions that will collect all 9 variables 
+in a row, column, or cell. The 3x3 cell is the most tedious; We can calculate the top left coordinate and then loop over 
+the 3x3 from that point. The row and column are relatively easily implemented using a splice and list comprehension.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">get_cell_ids</span><span class="p">(</span><span class="n">cell_id</span><span class="p">):</span>                                       
+    <span class="n">xs</span> <span class="o">=</span> <span class="p">(</span><span class="n">cell_id</span> <span class="o">%</span> <span class="mi">3</span><span class="p">)</span><span class="o">*</span><span class="mi">3</span>                       
+    <span class="n">ys</span> <span class="o">=</span> <span class="p">(</span><span class="n">cell_id</span> <span class="o">//</span> <span class="mi">3</span><span class="p">)</span><span class="o">*</span><span class="mi">3</span>   
+    <span class="k">for</span> <span class="n">dx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>    
+        <span class="k">for</span> <span class="n">dy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="p">(</span><span class="n">xs</span><span class="o">+</span><span class="n">dx</span><span class="p">)</span> <span class="o">+</span> <span class="mi">9</span> <span class="o">*</span> <span class="p">(</span><span class="n">ys</span><span class="o">+</span><span class="n">dy</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_cell</span><span class="p">(</span><span class="n">cell_id</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">allvars</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">get_cell_ids</span><span class="p">(</span><span class="n">cell_id</span><span class="p">)]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_row</span><span class="p">(</span><span class="n">row_id</span><span class="p">):</span>
+    <span class="n">start</span> <span class="o">=</span> <span class="n">row_id</span><span class="o">*</span><span class="mi">9</span>
+    <span class="k">return</span> <span class="n">allvars</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">start</span><span class="o">+</span><span class="mi">9</span><span class="p">]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_column</span><span class="p">(</span><span class="n">column_id</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">allvars</span><span class="p">[</span><span class="n">y</span><span class="o">*</span><span class="mi">9</span><span class="o">+</span><span class="n">column_id</span><span class="p">]</span> <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9</span><span class="p">)]</span>
+</pre></div>
+
+</p>
+
+Now we can call upon itertools.combinations to give us all the unique, unordered pairs of variables in a unit. 
+We can visualize what it does in this table:
+
+<style>
+.red {
+  background-color: #FF0000;
+  width:32px;
+  height:32px;
+  color: #FFFFFF;
+}
+
+.green {
+  background-color: #00FF00;
+  width:32px;
+  height:32px;
+  color: #FFFFFF;
+}
+</style>
+
+<table>
+    <tr>
+        <td>j\i</td>
+        <td>0</td>
+        <td>1</td>
+        <td>2</td>
+        <td>3</td>
+        <td>4</td>
+    </tr>
+    <tr>
+        <td>0</td>
+        <td class="red"></td>
+        <td class="green"></td>
+        <td class="green"></td>
+        <td class="green"></td>
+        <td class="green"></td>
+    </tr>
+    <tr>
+        <td>1</td>
+        <td class="red"></td>
+        <td class="red"></td>
+        <td class="green"></td>
+        <td class="green"></td>
+        <td class="green"></td>
+    </tr>
+    <tr>
+        <td>2</td>
+        <td class="red"></td>
+        <td class="red"></td>
+        <td class="red"></td>
+        <td class="green"></td>
+        <td class="green"></td>
+    </tr>
+    <tr>
+        <td>3</td>
+        <td class="red"></td>
+        <td class="red"></td>
+        <td class="red"></td>
+        <td class="red"></td>
+        <td class="green"></td>
+    </tr>
+    <tr>
+        <td>4</td>
+        <td class="red"></td>
+        <td class="red"></td>
+        <td class="red"></td>
+        <td class="red"></td>
+        <td class="red"></td>
+    </tr>
+</table>
+
+<p>
+    In other words: \( \forall i, j \in \text{combinations}(\text{range}(5), 2)) \implies i < j \). This is exactly what we
+    wanted because we already discussed how \(x \neq y \implies y \neq x\) so there is not need to add the constraint twice
+</p>
+
+<p>
+    Hopefully I haven't confused you too much. But I think it will be worth while considering how elegantly we can 
+    implemented the final constraints for all 9 rows, columns, and 3x3s.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9</span><span class="p">):</span>
+    <span class="p">[</span><span class="n">add_unequality</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">)</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">combinations</span><span class="p">(</span><span class="n">get_column</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="mi">2</span><span class="p">)]</span>
+    <span class="p">[</span><span class="n">add_unequality</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">)</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">combinations</span><span class="p">(</span><span class="n">get_row</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="mi">2</span><span class="p">)]</span>
+    <span class="p">[</span><span class="n">add_unequality</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">)</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">combinations</span><span class="p">(</span><span class="n">get_cell</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="mi">2</span><span class="p">)]</span>
+</pre></div>
+
+</p>
+
+<p>
+That's all the constraints we need to complete a sudoku. There is still one thing missing in the ILP model however and that is
+our objective. What is our objective? 
+Well to satisfy all the constraints, but other than that we don't really care. 
+Mmm, we really need to specify a goal? Let's just do something arbitrary, 
+like maximizing the value in the upper left corner.
+</p>
+
+<p>
+Lastly, we call optimize with a max timeout of 10 seconds. Unfortunately, when the sudoku is particularly ambiguous (lots of zeroes), the
+solver can take quite long, so we'll make sure that it doesn't hang. Luckily, for most normal cases it solves very quickly. If it has
+found a solution, we can print it to screen by accessing the values of the variables, which should now be set.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1"># arbitrary</span>
+<span class="n">m</span><span class="o">.</span><span class="n">objective</span> <span class="o">=</span> <span class="n">maximize</span><span class="p">(</span><span class="n">allvars</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">optimize</span><span class="p">(</span><span class="n">max_seconds</span><span class="o">=</span><span class="mi">10</span><span class="p">))</span>
+
+<span class="k">if</span> <span class="n">m</span><span class="o">.</span><span class="n">num_solutions</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">allvars</span><span class="p">[</span><span class="n">y</span><span class="o">*</span><span class="mi">9</span><span class="o">+</span><span class="n">x</span><span class="p">]</span><span class="o">.</span><span class="n">x</span><span class="p">)</span><span class="si">}</span><span class="s2">,&quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">()</span>
+</pre></div>
+
+</p>
+
+If we run the program, we get our solved sudoku back in a blazingly fast 0.1 seconds!
+
+<p>
+    <div class="highlight"><pre><span></span>$ python3 sudoku.py
+
+...
+Total time (CPU seconds):       0.10   (Wallclock seconds):       0.10
+
+OptimizationStatus.OPTIMAL                                                       
+4,8,3,9,2,1,6,5,7,                  
+9,6,7,3,4,5,8,2,1,                                                                                                                          
+2,5,1,8,7,6,4,9,3,                                                                                                                          
+5,4,8,1,3,2,9,7,6,                                                                                                                          
+7,2,9,5,6,4,1,3,8,                                                                                                                          
+1,3,6,7,9,8,2,4,5,                                                                                                                          
+3,7,2,6,8,9,5,1,4,                                                                                                                          
+8,1,4,2,5,3,7,6,9,                                                                                                                          
+6,9,5,4,1,7,3,8,2,
+</pre></div>
+
+</p>
+
+Of course we could add some nice input handling so that we can provide any sudoku in a range of different formats, but I will leave
+that up to you.
+
+<h2>Full code</h2>
+For convenience, here is the full source of the project we build over the course of the post:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">mip</span><span class="w"> </span><span class="kn">import</span> <span class="n">Model</span><span class="p">,</span> <span class="n">INTEGER</span><span class="p">,</span> <span class="n">maximize</span><span class="p">,</span> <span class="n">BINARY</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">itertools</span>
+
+<span class="n">sudoku</span> <span class="o">=</span> <span class="p">[</span> <span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span>
+           <span class="mi">9</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span>
+           <span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">8</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span>
+           <span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">8</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">9</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span>
+           <span class="mi">7</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">8</span><span class="p">,</span>
+           <span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">7</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">8</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span>
+           <span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">9</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span>
+           <span class="mi">8</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">9</span><span class="p">,</span>
+           <span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span>
+         <span class="p">]</span>
+
+
+<span class="n">m</span> <span class="o">=</span> <span class="n">Model</span><span class="p">(</span><span class="s2">&quot;Sudoku&quot;</span><span class="p">)</span>
+
+<span class="c1"># create an integer variable in range [0,9] for each field in the sudoku</span>
+<span class="n">allvars</span> <span class="o">=</span> <span class="p">[</span><span class="n">m</span><span class="o">.</span><span class="n">add_var</span><span class="p">(</span><span class="n">var_type</span><span class="o">=</span><span class="n">INTEGER</span><span class="p">,</span> <span class="n">lb</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="n">ub</span> <span class="o">=</span> <span class="mi">9</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">sudoku</span><span class="p">]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_cell_ids</span><span class="p">(</span><span class="n">cell_id</span><span class="p">):</span>
+    <span class="n">xs</span> <span class="o">=</span> <span class="p">(</span><span class="n">cell_id</span> <span class="o">%</span> <span class="mi">3</span><span class="p">)</span><span class="o">*</span><span class="mi">3</span>
+    <span class="n">ys</span> <span class="o">=</span> <span class="p">(</span><span class="n">cell_id</span> <span class="o">//</span> <span class="mi">3</span><span class="p">)</span><span class="o">*</span><span class="mi">3</span>
+    <span class="k">for</span> <span class="n">dx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">dy</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="p">(</span><span class="n">xs</span><span class="o">+</span><span class="n">dx</span><span class="p">)</span> <span class="o">+</span> <span class="mi">9</span> <span class="o">*</span> <span class="p">(</span><span class="n">ys</span><span class="o">+</span><span class="n">dy</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_cell</span><span class="p">(</span><span class="n">cell_id</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">allvars</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">get_cell_ids</span><span class="p">(</span><span class="n">cell_id</span><span class="p">)]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_row</span><span class="p">(</span><span class="n">row_id</span><span class="p">):</span>
+    <span class="n">start</span> <span class="o">=</span> <span class="n">row_id</span><span class="o">*</span><span class="mi">9</span>
+    <span class="k">return</span> <span class="n">allvars</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">start</span><span class="o">+</span><span class="mi">9</span><span class="p">]</span>    
+
+<span class="k">def</span><span class="w"> </span><span class="nf">get_column</span><span class="p">(</span><span class="n">column_id</span><span class="p">):</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">allvars</span><span class="p">[</span><span class="n">y</span><span class="o">*</span><span class="mi">9</span><span class="o">+</span><span class="n">column_id</span><span class="p">]</span> <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9</span><span class="p">)]</span>
+
+<span class="c1"># Add an x != y constraint to model m</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">add_unequality</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+    <span class="n">bvar</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">add_var</span><span class="p">(</span><span class="n">var_type</span><span class="o">=</span><span class="n">BINARY</span><span class="p">)</span>
+    <span class="n">m</span> <span class="o">+=</span> <span class="n">x</span> <span class="o">&lt;=</span> <span class="n">y</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">+</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">bvar</span>
+    <span class="n">m</span> <span class="o">+=</span> <span class="n">x</span> <span class="o">&gt;=</span> <span class="n">y</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">-</span> <span class="mi">10</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span><span class="o">-</span><span class="n">bvar</span><span class="p">)</span>
+
+<span class="c1"># Fix constants</span>
+<span class="k">for</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">var</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">sudoku</span><span class="p">,</span><span class="n">allvars</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">i</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">m</span> <span class="o">+=</span> <span class="n">var</span> <span class="o">==</span> <span class="n">i</span>
+
+<span class="c1"># All columns, rows, and cells must be distinct</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9</span><span class="p">):</span>
+    <span class="p">[</span><span class="n">add_unequality</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">)</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">combinations</span><span class="p">(</span><span class="n">get_column</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="mi">2</span><span class="p">)]</span>
+    <span class="p">[</span><span class="n">add_unequality</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">)</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">combinations</span><span class="p">(</span><span class="n">get_row</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="mi">2</span><span class="p">)]</span>
+    <span class="p">[</span><span class="n">add_unequality</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="n">y</span><span class="p">)</span> <span class="ow">in</span> <span class="n">itertools</span><span class="o">.</span><span class="n">combinations</span><span class="p">(</span><span class="n">get_cell</span><span class="p">(</span><span class="n">i</span><span class="p">),</span> <span class="mi">2</span><span class="p">)]</span>
+
+<span class="c1"># arbitrary</span>
+<span class="n">m</span><span class="o">.</span><span class="n">objective</span> <span class="o">=</span> <span class="n">maximize</span><span class="p">(</span><span class="n">allvars</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>                                               
+                                                                                 
+<span class="nb">print</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">optimize</span><span class="p">(</span><span class="n">max_seconds</span><span class="o">=</span><span class="mi">10</span><span class="p">))</span>
+                                                                       
+<span class="k">if</span> <span class="n">m</span><span class="o">.</span><span class="n">num_solutions</span><span class="p">:</span>                             
+    <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9</span><span class="p">):</span>                                                                                                                      
+        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">9</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">int</span><span class="p">(</span><span class="n">allvars</span><span class="p">[</span><span class="n">y</span><span class="o">*</span><span class="mi">9</span><span class="o">+</span><span class="n">x</span><span class="p">]</span><span class="o">.</span><span class="n">x</span><span class="p">)</span><span class="si">}</span><span class="s2">,&quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>                           
+        <span class="nb">print</span><span class="p">()</span>                     
+</pre></div>
+
+</p>
+
+<p>
+    Let me know if you have been able to improve on the project in any way! Also just let me know if you enjoyed reading this.
+</p>
+
+<p>
+    If you need some more unsolved sudokus to play with, check out this list: 
+    <a href="https://github.com/dimitri/sudoku/blob/master/sudoku.txt">https://github.com/dimitri/sudoku/blob/master/sudoku.txt</a>
+</p>
+
+
+
+    
+    <div id="gitalk-container"></div>
+<script>
+const gitalk = new Gitalk({
+  clientID: "a1da1553c3ddbf769a52",
+  clientSecret: "1ad095f6d5d87b7818859fa8184bd422fca65253",
+  repo: 'blog',      // The repository of store comments,
+  owner: 'HugoPeters1024',
+  admin: ['HugoPeters1024'],
+  id: "11",      // Ensure uniqueness and length less than 50
+  number: "11",
+  distractionFreeMode: false  // Facebook-like distraction free mode
+})
+
+gitalk.render('gitalk-container')
+</script>
+    
+  <div class="modified-at"> 
+    <small>last modified: May 29, 2026 at 11:08</small>
+  </div>
+
+
+    </div>
+  </div>
+
+  
+    <footer>
+    Hugo Peters &middot; hpeters1024@gmail.com &middot; running on a raspberry pi 3b+
+</footer>
+  
+
+</body>
+</html>

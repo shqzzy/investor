@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+  <script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/public/pygments.css">
+  <link rel="stylesheet" type="text/css" href="/public/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  
+  
+  
+  <link rel="alternate" type="application/rss+xml" title="Hugo's Blog" href="/feed.xml">
+  <link rel="icon" href="/posts/10/icon.jpg">
+  <title>Who still uses ReaderT</title>
+</head>
+<body>
+  
+
+  
+    <header>
+    <div class="logo"><a href="/">Hugo's Blog</a></div>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <nav>
+        <a href="/">Home</a>
+        <a href="/posts">Posts</a>
+        <a href="/feed.xml">RSS</a>
+    </nav>
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+</header>
+  
+
+  <div class="content">
+    <div class="content-page">
+    
+  <div class="code-languages">
+    
+    <div class="code-language">haskell</div>
+    
+  </div>
+  <h1>Who still uses ReaderT</h1>
+  
+
+<p>
+    Monad transformers are a pretty amazing skill in any haskellers tool set, and can be a pleasure to work with. However, after some experience digging around in the <a target=_blank href="https://ihp.digitallyinduced.com/">IHP</a> codebase, which
+    makes liberal use of the <a target=_blank href="https://wiki.haskell.org/Implicit_parameters"> Implicit Parameters</a> language extension, I've come to conclude that a monad stack with just a ReaderT can be simplified.
+    This posts explores how.
+</p>
+
+<h2>Our running example: the ol' env</h2>
+
+Consider we are making an application for querying a database. With this database comes a persistent connection that is required by the lower level functions. Because haskell lacks a global state, we will have to pass 
+this connection down through the higher level abstractions as part of our environment, yuck:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1">-- We are just playing around with dummy types</span>
+<span class="kr">data</span><span class="w"> </span><span class="kt">DbConn</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">DbConn</span>
+<span class="kr">data</span><span class="w"> </span><span class="kt">Query</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">Query</span>
+
+<span class="c1">-- and dummy functions</span>
+<span class="nf">externalFun</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">DbConn</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Query</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">externalFun</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">undefined</span>
+
+<span class="nf">makeConnection</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="kt">DbConn</span>
+<span class="nf">makeConnection</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">undefined</span>
+
+<span class="nf">getSelectAllQuery</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Query</span>
+<span class="nf">getSelectAllQuery</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">undefined</span>
+
+
+<span class="c1">-- Imagine that we would have many functions like this one</span>
+<span class="nf">selectAll</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">DbConn</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">selectAll</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">let</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">getSelectAllQuery</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="n">runQuery</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">query</span>
+
+<span class="nf">runQuery</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">DbConn</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Query</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">runQuery</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">externalFun</span><span class="w"> </span>
+
+<span class="nf">main</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="nb">()</span>
+<span class="nf">main</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="n">conn</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="n">makeConnection</span>
+<span class="w">    </span><span class="n">row</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="n">selectAll</span><span class="w"> </span><span class="n">conn</span>
+<span class="w">    </span><span class="n">print</span><span class="w"> </span><span class="n">row</span>
+</pre></div>
+
+</p>
+
+<h2>Hiding DbConn with ReaderT</h2>
+
+<p>
+    We want our functions to live in the IO monad with persistent access to some read only state. This is exactly what the <code>ReaderT</code> monad transformer was created for. We can use it to extend the IO monad and create our very own <code>DBIO</code> monad:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kr">import</span><span class="w"> </span><span class="nn">Control.Monad.Trans.Reader</span>
+
+<span class="kr">type</span><span class="w"> </span><span class="kt">DBIO</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">ReaderT</span><span class="w"> </span><span class="kt">DbConn</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="n">a</span>
+
+<span class="nf">selectAll</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">DBIO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">selectAll</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">let</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">getSelectAllQuery</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="n">runQuery</span><span class="w"> </span><span class="n">query</span>
+
+<span class="nf">runQuery</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Query</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">DBIO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">runQuery</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">ask</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="nf">\</span><span class="n">conn</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">liftIO</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">externalFun</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">query</span>
+</pre></div>
+
+</p>
+
+<p>
+    <code>DBIO</code> is a special monad that can still perform IO operations using the <code>liftIO</code> function to lift it up into <code>DBIO</code>. In addition, it exposes the <code>ask</code> function, which returns the value of the environment; or in this case the <code>DbConn</code> instance. This allows us to easily write functions 
+    like selectAll, without having to think about passing down the DbConn, all the while preserving purity. Finally, when we want to execute some DBIO operation, we can unpack the ReaderT layer by providing the environment with which to resolve the inner expression, 
+    as seen in the main function.
+</p>
+
+<p>
+    This approach is already much better than the original solution. However, there is just one thing that bugs me and that is the need for wrapping IO operations with <code>liftIO</code>. Consider the following cousin of <code>selectAll</code>:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="nf">selectAllAndMore</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">DBIO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">selectAllAndMore</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="n">liftIO</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">sendMail</span><span class="w"> </span><span class="s">&quot;bossman@company.com&quot;</span><span class="w"> </span><span class="s">&quot;I just ran a query bro&quot;</span>
+<span class="w">    </span><span class="n">liftIO</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">setReminder</span><span class="w"> </span><span class="mi">3600</span><span class="w"> </span><span class="s">&quot;Check if the database is still running ma man&quot;</span>
+<span class="w">    </span><span class="n">selectAll</span>
+
+<span class="nf">runQuery</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Query</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">DBIO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">runQuery</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">ask</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="nf">\</span><span class="n">conn</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">liftIO</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="n">externalFun</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">query</span>
+</pre></div>
+
+</p>
+
+<p>
+Ideally, I want to forget that I am not in a naked IO entirely. Luckily, we can.
+</p>
+
+<h2>Do you even lift bro? Nope!</h2>
+
+<p>
+Enter implicit parameters:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="cm">{-# LANGUAGE ImplicitParams #-}</span>
+
+<span class="nf">selectAll</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">(</span><span class="o">?</span><span class="n">conn</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">DbConn</span><span class="p">)</span><span class="w"> </span><span class="ow">=&gt;</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">selectAll</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">let</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">getSelectAllQuery</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="n">runQuery</span><span class="w"> </span><span class="n">query</span>
+
+<span class="nf">runQuery</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">(</span><span class="o">?</span><span class="n">conn</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">DbConn</span><span class="p">)</span><span class="w"> </span><span class="ow">=&gt;</span><span class="w"> </span><span class="kt">Query</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">runQuery</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">externalFun</span><span class="w"> </span><span class="o">?</span><span class="n">conn</span><span class="w"> </span><span class="n">query</span>
+
+<span class="nf">main</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="nb">()</span>
+<span class="nf">main</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="n">conn</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="n">makeConnection</span>
+<span class="w">    </span><span class="n">row</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="kr">let</span><span class="w"> </span><span class="o">?</span><span class="n">conn</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="n">selectAll</span>
+<span class="w">    </span><span class="n">print</span><span class="w"> </span><span class="n">row</span>
+
+<span class="nf">selectAllAndMore</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">selectAllAndMore</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="n">sendMail</span><span class="w"> </span><span class="s">&quot;bossman@company.com&quot;</span><span class="w"> </span><span class="s">&quot;I just ran a query bro&quot;</span>
+<span class="w">    </span><span class="n">setReminder</span><span class="w"> </span><span class="mi">3600</span><span class="w"> </span><span class="s">&quot;Check if the database is still running ma man&quot;</span>
+<span class="w">    </span><span class="n">selectAll</span>
+</pre></div>
+
+</p>
+
+<p>
+    The <code>runQuery</code> and <code>selectAll</code> functions now have a type constraint clause that say that the implicit variable <code>?conn</code> should be in scope and
+    is implicitly captured as well. This means that we can't call these functions if the typechecker is not convinced that <code>?conn</code> is in scope. 
+    Using a simply let binding in main we can declare ?conn and call the functions we want. However, it seems we have exchanged one evil
+    for another; Although we now may freely call IO functions without using a tedious liftIO, we constantly have to repeat ourselves elsewhere
+    by adding the ?conn constraint to all our database functions. Let's see if we can resolve this.
+</p>
+
+<p>
+Our goal is to create a new type (let's again pick <code>DBIO</code>) that encapsulates the implicit parameter type constraint. However, GHC won't allow
+this out of the box. It would mean that there are type variables that are not quantified in the most outer scope. Remember, haskell 
+automatically does the following:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="cm">{-# LANGUAGE ScopedTypeVariables #-}</span>
+
+<span class="c1">-- a is quantified on the most outer scope.</span>
+<span class="nf">id</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="n">forall</span><span class="w"> </span><span class="n">a</span><span class="o">.</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">a</span>
+<span class="nf">id</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">x</span>
+</pre></div>
+
+</p>
+
+If we had some type b, in which we want to hide more constraints we are not allowed to do:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="cm">{-# LANGUAGE ScopedTypeVariables #-}</span>
+
+<span class="c1">-- this is also not type correct for other reasons</span>
+<span class="nf">id</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="n">forall</span><span class="w"> </span><span class="n">a</span><span class="o">.</span><span class="w"> </span><span class="p">(</span><span class="n">forall</span><span class="w"> </span><span class="n">b</span><span class="o">.</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">a</span>
+<span class="nf">id</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">x</span>
+</pre></div>
+
+</p>
+
+<p>
+    Without first enabling the <code>RankNTypes</code> language extension. This is an extension that definitely belongs on the list of extensions that
+    should never be enabled by default. It significantly complicates the job of the type checker, which results in unintelligible error messages
+    when things go wrong. However, for our use case, everything remains quite sane, and thus we decide to cope.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="cm">{-# LANGUAGE RankNTypes #-}</span>
+
+<span class="kr">type</span><span class="w"> </span><span class="kt">DBIO</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="p">(</span><span class="o">?</span><span class="n">conn</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">DbConn</span><span class="p">)</span><span class="w"> </span><span class="ow">=&gt;</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="n">a</span>
+
+<span class="nf">selectAll</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">DBIO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">selectAll</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">let</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">getSelectAllQuery</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="n">runQuery</span><span class="w"> </span><span class="n">query</span>
+
+<span class="nf">runQuery</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Query</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">DBIO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">runQuery</span><span class="w"> </span><span class="n">query</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">externalFun</span><span class="w"> </span><span class="o">?</span><span class="n">conn</span><span class="w"> </span><span class="n">query</span>
+
+<span class="nf">main</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="nb">()</span>
+<span class="nf">main</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="n">conn</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="n">makeConnection</span>
+<span class="w">    </span><span class="n">row</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="kr">let</span><span class="w"> </span><span class="o">?</span><span class="n">conn</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="n">selectAll</span>
+<span class="w">    </span><span class="n">print</span><span class="w"> </span><span class="n">row</span>
+
+
+<span class="nf">selectAllAndMore</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">DBIO</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">selectAllAndMore</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="n">sendMail</span><span class="w"> </span><span class="s">&quot;bossman@company.com&quot;</span><span class="w"> </span><span class="s">&quot;I just ran a query bro&quot;</span>
+<span class="w">    </span><span class="n">setReminder</span><span class="w"> </span><span class="mi">3600</span><span class="w"> </span><span class="s">&quot;Check if the database is still running ma man&quot;</span>
+<span class="w">    </span><span class="n">selectAll</span>
+</pre></div>
+
+</p>
+
+<p>
+    All our wishes have come true! Inside the <code>DBIO</code> monad we are allowed to perform arbitrary naked IO computations and we always have access to
+    our connection with the <code>?conn</code> variable. Although we can unlift <code>DBIO</code> back to IO with a simple let binding, we can create a final interface function,
+    allowing the users of our codebase to be able to forget about the implicit parameters all together. In fact, if your peer programmers are avid <code>ReaderT</code>
+    fans, they might not even notice anything different is going on from the outside.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="cm">{-# LANGUAGE RankNTypes #-}</span>
+
+<span class="nf">runDBIO</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">DbConn</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">DBIO</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="n">a</span>
+<span class="nf">runDBIO</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">next</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">let</span><span class="w"> </span><span class="o">?</span><span class="n">conn</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="n">next</span>
+
+<span class="nf">main</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="nb">()</span>
+<span class="nf">main</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="n">conn</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="n">makeConnection</span>
+<span class="w">    </span><span class="n">row</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="n">runDBIO</span><span class="w"> </span><span class="n">conn</span><span class="w"> </span><span class="n">selectAll</span>
+<span class="w">    </span><span class="n">print</span><span class="w"> </span><span class="n">row</span>
+
+<span class="c1">-- or if you want to be fancy:</span>
+<span class="nf">mainFancy</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="nb">()</span>
+<span class="nf">mainFancy</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">makeConnection</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="n">flip</span><span class="w"> </span><span class="n">runDBIO</span><span class="w"> </span><span class="n">selectAll</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="n">print</span>
+</pre></div>
+
+</p>
+
+<p>
+    I thought that was pretty neat :)
+</p>
+
+
+
+    
+    <div id="gitalk-container"></div>
+<script>
+const gitalk = new Gitalk({
+  clientID: "a1da1553c3ddbf769a52",
+  clientSecret: "1ad095f6d5d87b7818859fa8184bd422fca65253",
+  repo: 'blog',      // The repository of store comments,
+  owner: 'HugoPeters1024',
+  admin: ['HugoPeters1024'],
+  id: "10",      // Ensure uniqueness and length less than 50
+  number: "10",
+  distractionFreeMode: false  // Facebook-like distraction free mode
+})
+
+gitalk.render('gitalk-container')
+</script>
+    
+  <div class="modified-at"> 
+    <small>last modified: May 29, 2026 at 11:08</small>
+  </div>
+
+
+    </div>
+  </div>
+
+  
+    <footer>
+    Hugo Peters &middot; hpeters1024@gmail.com &middot; running on a raspberry pi 3b+
+</footer>
+  
+
+</body>
+</html>

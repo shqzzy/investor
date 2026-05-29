@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+  <script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/public/pygments.css">
+  <link rel="stylesheet" type="text/css" href="/public/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  
+  
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['\\(', '\\)']]
+  }
+};
+</script>
+<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-MML-AM_CHTML"> </script>
+
+  <link rel="alternate" type="application/rss+xml" title="Hugo's Blog" href="/feed.xml">
+  <link rel="icon" href="/posts/15/favicon.svg">
+  <title>Solving newspaper puzzles with SMT solvers</title>
+</head>
+<body>
+  
+
+  
+    <header>
+    <div class="logo"><a href="/">Hugo's Blog</a></div>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <nav>
+        <a href="/">Home</a>
+        <a href="/posts">Posts</a>
+        <a href="/feed.xml">RSS</a>
+    </nav>
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+</header>
+  
+
+  <div class="content">
+    <div class="content-page">
+    
+  <div class="code-languages">
+    
+    <div class="code-language">haskell</div>
+    
+  </div>
+  <h1>Solving newspaper puzzles with SMT solvers</h1>
+  
+
+<h2>
+    Puzzle Description
+</h2>
+
+<p>
+A little while ago, whilst visiting my parents, I was shown a peculiar puzzle in the newspaper in a column by <a href="https://www.universiteitleiden.nl/medewerkers/ionica-smeets#tab-1" target=_blank>Prof.dr.ir. I. Smeets</a>. It consisted of 10 questions that could either be answered by an integer value, or by true/false. The questions were as follows:
+</p>
+
+<ol type="a">
+    <li>What is sum of all integer answers?</li>
+    <li>How many boolean answers are true?</li>
+    <li>Is a the largest number?</li>
+    <li>How many integers are equal to me?</li>
+    <li>Are all integers positive?</li>
+    <li>What is the average of all integers?</li>
+    <li>Is d strictly larger than b?</li>
+    <li>What is a / h?</li>
+    <li>Does f = d - b - h * d hold?</li>
+    <li>What is the answer to this question?</li>
+</ol>
+
+<p>
+    Note that the answer to j can be either an integer or true/false.
+</p>
+
+<p>
+    It quickly becomes apparent that the answers to the questions heavily depend on other questions. 
+    Question h is even self referential.
+    Solving this by hand would require some process of deduction and or elimination. 
+</p>
+
+
+<h2>
+    Attempt to solve it by hand
+</h2>
+
+Note on notation: true = \(\top\) and false = \(\bot\)
+
+<h3>
+    Step 1
+</h3>
+
+We can rewrite \(h = a/h\) to \(a = h^2 \). Discovering that h and a do not vary independently.
+
+<h3>
+    Step 2
+</h3>
+
+d will always be equal to itself, therefore we can deduce that \( d \ge 1 \)
+
+<h3>
+    Step 3
+</h3>
+
+a tells us that \(a = a + b + d + f + h + j? \) (we don't know for sure if j is an integer).
+The only way for this expression to hold is if all integers except a are 0. But from step 2 we
+already found that that cannot be the case. Therefore some of the integers must be negative.
+This allows us to conclude that \(e = \bot \)
+
+<h3>Step 4</h3>
+
+Divisions cannot yield non integer numbers, thus we know that the sum of all numbers (a) must either be a multiple of 5 or 6,
+depending on whether j is in integer. In step 1 we also discovered that it must be a square number, leaving not many possibilities.
+
+<h3>Step 5</h3>
+Ugh, I'm stuck.
+
+<h2>Brute force the rest?</h2>
+
+Given the information we were already able to deduce, we can think of some reasonable ranges for the integer answers to try. After
+some tweaking and a few minutes of computing time I found the answer by trying the in product of all these ranges, accounting to around
+5 million permutations. 
+However I feel too ashamed and too unsatisfied to leave it at that.
+There has to be a more elegant way that requires a little less luck. 
+(Besides of course actually solving it by hand which is probably very much possible).
+
+<h2><a href="https://github.com/Z3Prover/z3" target=_blank>Z3</a>, the Deus Ex Machina of puzzles</h2>
+
+<p>
+    During a course in my masters program, we had to make a symbolic verifier that attempted to prove whether a program was correct.
+    It did this by taking a fact that should hold at the end of the program, e.g. \( \forall i j : i \lt j : arr[i] \le arr[j] \) for a sorting algorithm
+    It would then go backwards to the program and update whatever constraints on variables needed to hold until it would be at
+    the beginning of the function. At that point you had to use an SMT solver to test if those constraints could be falsified. If so,
+    then you had found an input for which your function would fail, a pretty nifty way to statically test software.
+</p>
+
+<p>
+    The reason that that is interesting, is because that exposed me to the power of SMT solvers, and specifically taught me how
+    to use Z3. I wondered if I can convert this puzzle into a set of variables and constraints, and find an input for which all the
+    constraints hold, thus generating a solution to the puzzle.
+</p>
+
+<h3>Modelling the solution datatype</h3>
+
+Our final solution object might look something like this.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kr">data</span><span class="w"> </span><span class="kt">Solution</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">Solution</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Bool</span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Bool</span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">g</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Bool</span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">h</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Bool</span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Either</span><span class="w"> </span><span class="kt">Bool</span><span class="w"> </span><span class="kt">Int</span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="kr">deriving</span><span class="w"> </span><span class="p">(</span><span class="kt">Show</span><span class="p">)</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/DeductionPuzzle/blob/master/app/Main.hs" target="_blank">full source</a></pre></div>
+</p>
+
+However, when dealing with our theorem prover, we are considering Z3 variables, which are addressed as AST nodes.
+Since Z3 is strictly typed when it comes to booleans vs integers, we'll need two distinct variables <code>jint</code> and <code>jbool</code>.
+We could make a third auxiliary boolean variable <code>jisbool</code>, that decides which is the case.
+However, that would make it very tedious to define our constraints as the decision to include j is dynamic.
+Instead, I decided to make the decision variable a static boolean, expanding our search space to 2 permutations,
+I think we'll be fine.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="cm">{-# LANGUAGE DuplicateRecordFields #-}</span>
+<span class="cm">{-# LANGUAGE RecordWildCards #-}</span>
+
+<span class="kr">import</span><span class="w"> </span><span class="k">qualified</span><span class="w"> </span><span class="nn">Z3.Monad</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Z</span>
+
+<span class="kr">data</span><span class="w"> </span><span class="kt">Z3Solution</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">Z3Solution</span>
+<span class="w">    </span><span class="p">{</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">g</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">h</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">jisbool</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Bool</span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">jint</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span>
+<span class="w">    </span><span class="p">,</span><span class="w"> </span><span class="n">jbool</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span>
+<span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="kr">deriving</span><span class="w"> </span><span class="p">(</span><span class="kt">Show</span><span class="p">)</span>
+
+<span class="nf">mkZ3Solution</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Bool</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">Z3</span><span class="w"> </span><span class="kt">Z3Solution</span>
+<span class="nf">mkZ3Solution</span><span class="w"> </span><span class="n">jisbool</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">Z3Solution</span>
+<span class="w">    </span><span class="o">&lt;$&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkFreshIntVar</span><span class="w"> </span><span class="s">&quot;a&quot;</span>
+<span class="w">    </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkFreshIntVar</span><span class="w"> </span><span class="s">&quot;b&quot;</span>
+<span class="w">    </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkFreshBoolVar</span><span class="w"> </span><span class="s">&quot;c&quot;</span>
+<span class="w">    </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkFreshIntVar</span><span class="w"> </span><span class="s">&quot;d&quot;</span>
+<span class="w">    </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkFreshBoolVar</span><span class="w"> </span><span class="s">&quot;e&quot;</span>
+<span class="w">    </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkFreshIntVar</span><span class="w"> </span><span class="s">&quot;f&quot;</span>
+<span class="w">    </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkFreshBoolVar</span><span class="w"> </span><span class="s">&quot;g&quot;</span>
+<span class="w">    </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkFreshIntVar</span><span class="w"> </span><span class="s">&quot;h&quot;</span>
+<span class="w">    </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkFreshBoolVar</span><span class="w"> </span><span class="s">&quot;i&quot;</span>
+<span class="w">    </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="n">pure</span><span class="w"> </span><span class="n">jisbool</span>
+<span class="w">    </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkFreshIntVar</span><span class="w"> </span><span class="s">&quot;jint&quot;</span>
+<span class="w">    </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkFreshBoolVar</span><span class="w"> </span><span class="s">&quot;jbool&quot;</span>
+
+<span class="nf">getAllBoolsZ3</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z3Solution</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="p">]</span>
+<span class="nf">getAllBoolsZ3</span><span class="w"> </span><span class="kt">Z3Solution</span><span class="w"> </span><span class="p">{</span><span class="o">..</span><span class="p">}</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">let</span><span class="w"> </span><span class="n">bools</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="p">[</span><span class="n">c</span><span class="p">,</span><span class="n">e</span><span class="p">,</span><span class="n">g</span><span class="p">,</span><span class="n">i</span><span class="p">]</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="kr">if</span><span class="w"> </span><span class="n">jisbool</span><span class="w"> </span><span class="kr">then</span><span class="w"> </span><span class="n">jbool</span><span class="kt">:</span><span class="n">bools</span><span class="w"> </span><span class="kr">else</span><span class="w"> </span><span class="n">bools</span>
+
+<span class="nf">getAllIntsZ3</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z3Solution</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="p">]</span>
+<span class="nf">getAllIntsZ3</span><span class="w"> </span><span class="kt">Z3Solution</span><span class="w"> </span><span class="p">{</span><span class="o">..</span><span class="p">}</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">let</span><span class="w"> </span><span class="n">ints</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="p">[</span><span class="n">a</span><span class="p">,</span><span class="n">b</span><span class="p">,</span><span class="n">d</span><span class="p">,</span><span class="n">f</span><span class="p">,</span><span class="n">h</span><span class="p">]</span><span class="w"> </span><span class="kr">in</span><span class="w"> </span><span class="kr">if</span><span class="w"> </span><span class="n">jisbool</span><span class="w"> </span><span class="kr">then</span><span class="w"> </span><span class="n">ints</span><span class="w"> </span><span class="kr">else</span><span class="w"> </span><span class="n">jint</span><span class="kt">:</span><span class="n">ints</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/DeductionPuzzle/blob/master/app/Main.hs" target="_blank">full source</a></pre></div>
+</p>
+
+<h3>Some auxiliary Z3 helpers</h3>
+
+Z3 does not care about divisions resulting in something other than an integer, and just rounds down to the nearest one.
+Since we do care, we create the following <code>mkIntDiv</code> helper function:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="nf">mkIntDiv</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">Z3</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span>
+<span class="nf">mkIntDiv</span><span class="w"> </span><span class="n">lhs</span><span class="w"> </span><span class="n">rhs</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="c1">-- Assert that the divider is not zero</span>
+<span class="w">    </span><span class="kt">Z</span><span class="o">.</span><span class="n">assert</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkNot</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="n">rhs</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkInteger</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">    </span><span class="c1">-- Assert that lhs % rhs == 0</span>
+<span class="w">    </span><span class="kt">Z</span><span class="o">.</span><span class="n">assert</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="n">uncurry</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="p">(,)</span><span class="w"> </span><span class="o">&lt;$&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkMod</span><span class="w"> </span><span class="n">lhs</span><span class="w"> </span><span class="n">rhs</span><span class="w"> </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkInteger</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">    </span><span class="c1">-- Proceed with the division</span>
+<span class="w">    </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkDiv</span><span class="w"> </span><span class="n">lhs</span><span class="w"> </span><span class="n">rhs</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/DeductionPuzzle/blob/master/app/Main.hs" target="_blank">full source</a></pre></div>
+</p>
+
+In order to count booleans more easily, we'll create a <code>boolToInt</code> function to convert <code>true</code> to 1 and <code>false</code> to 0:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="nf">boolToInt</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">Z3</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span>
+<span class="nf">boolToInt</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="n">_0</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkInteger</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">    </span><span class="n">_1</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkInteger</span><span class="w"> </span><span class="mi">1</span>
+<span class="w">    </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkIte</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="n">_1</span><span class="w"> </span><span class="n">_0</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/DeductionPuzzle/blob/master/app/Main.hs" target="_blank">full source</a></pre></div>
+</p>
+
+<h3>The main script</h3>
+
+With the boilerplate boiling, we can setup our z3 universe. This will be a script that might produce a solution.
+We can get this solution by evaluating the integers and booleans and combining in them in our previously defined Solution datatype.
+The problem is however that the evaluation functions produce a value of type Z3 (Maybe a).
+This means that using a traditional Functor and Applicative approach won't cut it because we'd be propagating <code>Maybe a</code> instead.
+What we actually want is a version of <code>fmap</code> and <code>ap</code> that operates on a nested structure:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="p">(</span><span class="o">&lt;$$&gt;</span><span class="p">)</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">(</span><span class="kt">Functor</span><span class="w"> </span><span class="n">f1</span><span class="p">,</span><span class="w"> </span><span class="kt">Functor</span><span class="w"> </span><span class="n">f2</span><span class="p">)</span><span class="w"> </span><span class="ow">=&gt;</span><span class="w"> </span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">f1</span><span class="w"> </span><span class="p">(</span><span class="n">f2</span><span class="w"> </span><span class="n">a</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">f1</span><span class="w"> </span><span class="p">(</span><span class="n">f2</span><span class="w"> </span><span class="n">b</span><span class="p">)</span>
+<span class="nf">f</span><span class="w"> </span><span class="o">&lt;$$&gt;</span><span class="w"> </span><span class="n">arg</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">fmap</span><span class="w"> </span><span class="p">(</span><span class="n">fmap</span><span class="w"> </span><span class="n">f</span><span class="p">)</span><span class="w"> </span><span class="n">arg</span>
+
+<span class="p">(</span><span class="o">&lt;**&gt;</span><span class="p">)</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">(</span><span class="kt">Monad</span><span class="w"> </span><span class="n">a1</span><span class="p">,</span><span class="w"> </span><span class="kt">Monad</span><span class="w"> </span><span class="n">a2</span><span class="p">)</span><span class="w"> </span><span class="ow">=&gt;</span><span class="w"> </span><span class="n">a1</span><span class="w"> </span><span class="p">(</span><span class="n">a2</span><span class="w"> </span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">b</span><span class="p">))</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">a1</span><span class="w"> </span><span class="p">(</span><span class="n">a2</span><span class="w"> </span><span class="n">a</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">a1</span><span class="w"> </span><span class="p">(</span><span class="n">a2</span><span class="w"> </span><span class="n">b</span><span class="p">)</span>
+<span class="nf">f</span><span class="w"> </span><span class="o">&lt;**&gt;</span><span class="w"> </span><span class="n">arg</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="nf">\</span><span class="n">f</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">arg</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="nf">\</span><span class="n">arg</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">pure</span><span class="w"> </span><span class="p">(</span><span class="n">ap</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">arg</span><span class="p">)</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/DeductionPuzzle/blob/master/app/Main.hs" target="_blank">full source</a></pre></div>
+</p>
+
+With that we can also create a helper to convert the <code>Integer</code> to an <code>Int</code> in the result of <code>evalInt</code>:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="nf">evalInt&#39;</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">Model</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">AST</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">Z3</span><span class="w"> </span><span class="p">(</span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Int</span><span class="p">)</span>
+<span class="nf">evalInt&#39;</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">fromIntegral</span><span class="w"> </span><span class="o">&lt;$$&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">evalInt</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">v</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/DeductionPuzzle/blob/master/app/Main.hs" target="_blank">full source</a></pre></div>
+</p>
+
+Now can finally setup the skeleton for our script. Note that the constraints are still missing.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="nf">solve</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="kt">Z3</span><span class="w"> </span><span class="p">(</span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Solution</span><span class="p">)</span>
+<span class="nf">solve</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">do</span>
+<span class="w">    </span><span class="c1">-- For now we assume that j is in fact a boolean answer</span>
+<span class="w">    </span><span class="n">sol</span><span class="o">@</span><span class="kt">Z3Solution</span><span class="w"> </span><span class="p">{</span><span class="o">..</span><span class="p">}</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="n">mkZ3Solution</span><span class="w"> </span><span class="kt">True</span>
+
+<span class="w">    </span><span class="c1">-- THIS IS WHERE THE CONSTRAINTS WILL BE</span>
+
+<span class="w">    </span><span class="c1">-- eval the values</span>
+<span class="w">    </span><span class="n">fmap</span><span class="w"> </span><span class="p">(</span><span class="n">fmap</span><span class="w"> </span><span class="n">fromJust</span><span class="w"> </span><span class="o">.</span><span class="w"> </span><span class="n">snd</span><span class="p">)</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">withModel</span><span class="w"> </span><span class="o">$</span><span class="w"> </span><span class="nf">\</span><span class="n">m</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Solution</span><span class="w"> </span>
+<span class="w">        </span><span class="o">&lt;$$&gt;</span><span class="w"> </span><span class="n">evalInt&#39;</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">a</span>
+<span class="w">        </span><span class="o">&lt;**&gt;</span><span class="w"> </span><span class="n">evalInt&#39;</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">b</span>
+<span class="w">        </span><span class="o">&lt;**&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">evalBool</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">c</span>
+<span class="w">        </span><span class="o">&lt;**&gt;</span><span class="w"> </span><span class="n">evalInt&#39;</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">d</span>
+<span class="w">        </span><span class="o">&lt;**&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">evalBool</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">e</span>
+<span class="w">        </span><span class="o">&lt;**&gt;</span><span class="w"> </span><span class="n">evalInt&#39;</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">f</span>
+<span class="w">        </span><span class="o">&lt;**&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">evalBool</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">g</span>
+<span class="w">        </span><span class="o">&lt;**&gt;</span><span class="w"> </span><span class="n">evalInt&#39;</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">h</span>
+<span class="w">        </span><span class="o">&lt;**&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">evalBool</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">i</span>
+<span class="w">        </span><span class="o">&lt;**&gt;</span><span class="w"> </span><span class="kr">if</span><span class="w"> </span><span class="n">jisbool</span><span class="w"> </span><span class="kr">then</span><span class="w"> </span><span class="kt">Left</span><span class="w"> </span><span class="o">&lt;$$&gt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">evalBool</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">jbool</span><span class="w"> </span><span class="kr">else</span><span class="w"> </span><span class="kt">Right</span><span class="w"> </span><span class="o">&lt;$$&gt;</span><span class="w"> </span><span class="n">evalInt&#39;</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">jint</span>
+
+<span class="nf">main</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">IO</span><span class="w"> </span><span class="nb">()</span>
+<span class="nf">main</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">evalZ3</span><span class="w"> </span><span class="n">solve</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="n">print</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/DeductionPuzzle/blob/master/app/Main.hs" target="_blank">full source</a></pre></div>
+</p>
+
+This program just produces a solution with default values as we have not defined any constraints yet:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kt">Just</span><span class="w"> </span><span class="p">(</span><span class="kt">Solution</span><span class="w"> </span><span class="p">{</span><span class="n">a</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">False</span><span class="p">,</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">False</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">g</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">False</span><span class="p">,</span><span class="w"> </span><span class="n">h</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">False</span><span class="p">,</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">Left</span><span class="w"> </span><span class="kt">False</span><span class="p">})</span>
+</pre></div>
+
+</p>
+
+<h3>The constraints</h3>
+
+Now all that is left, is modelling the questions as constraints. 
+
+<p>
+    <div class="highlight"><pre><span></span><span class="nf">_0</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkInteger</span><span class="w"> </span><span class="mi">0</span>
+<span class="nf">_1</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkInteger</span><span class="w"> </span><span class="mi">1</span>
+
+<span class="kr">let</span><span class="w"> </span><span class="n">ints</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">getAllIntsZ3</span><span class="w"> </span><span class="n">sol</span>
+<span class="kr">let</span><span class="w"> </span><span class="n">numints</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">length</span><span class="w"> </span><span class="n">ints</span>
+<span class="kr">let</span><span class="w"> </span><span class="n">bools</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">getAllBoolsZ3</span><span class="w"> </span><span class="n">sol</span>
+<span class="nf">boolints</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="n">mapM</span><span class="w"> </span><span class="n">boolToInt</span><span class="w"> </span><span class="n">bools</span>
+
+<span class="c1">-- a is the sum of ints</span>
+<span class="kt">Z</span><span class="o">.</span><span class="n">assert</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkAdd</span><span class="w"> </span><span class="n">ints</span>
+
+<span class="c1">-- b is the number of trues</span>
+<span class="kt">Z</span><span class="o">.</span><span class="n">assert</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkAdd</span><span class="w"> </span><span class="n">boolints</span>
+
+<span class="c1">-- c is wether a is the largest</span>
+<span class="kt">Z</span><span class="o">.</span><span class="n">assert</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkAnd</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="n">mapM</span><span class="w"> </span><span class="p">(</span><span class="kt">Z</span><span class="o">.</span><span class="n">mkGe</span><span class="w"> </span><span class="n">a</span><span class="p">)</span><span class="w"> </span><span class="n">ints</span>
+
+<span class="c1">-- d is how many are equal to me</span>
+<span class="kt">Z</span><span class="o">.</span><span class="n">assert</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkAdd</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="n">mapM</span><span class="w"> </span><span class="p">(</span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="o">&gt;=&gt;</span><span class="w"> </span><span class="n">boolToInt</span><span class="p">)</span><span class="w"> </span><span class="n">ints</span>
+
+<span class="c1">-- e is whether all integers are positive</span>
+<span class="kt">Z</span><span class="o">.</span><span class="n">assert</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkAnd</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="n">mapM</span><span class="w"> </span><span class="p">(</span><span class="kt">Z</span><span class="o">.</span><span class="n">mkLe</span><span class="w"> </span><span class="n">_0</span><span class="p">)</span><span class="w"> </span><span class="n">ints</span>
+
+<span class="c1">-- f is the average of all ints</span>
+<span class="kt">Z</span><span class="o">.</span><span class="n">assert</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="n">mkIntDiv</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkInteger</span><span class="w"> </span><span class="p">(</span><span class="n">fromIntegral</span><span class="w"> </span><span class="n">numints</span><span class="p">)</span>
+
+<span class="c1">-- g is d&gt;b</span>
+<span class="kt">Z</span><span class="o">.</span><span class="n">assert</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="n">g</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkGt</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="n">b</span>
+
+<span class="c1">-- h is a/h</span>
+<span class="kt">Z</span><span class="o">.</span><span class="n">assert</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="n">h</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="n">mkIntDiv</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">h</span>
+
+<span class="c1">-- i is f == d - b - h * d</span>
+<span class="nf">htimesd</span><span class="w"> </span><span class="ow">&lt;-</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkMul</span><span class="w"> </span><span class="p">[</span><span class="n">h</span><span class="p">,</span><span class="n">d</span><span class="p">]</span>
+<span class="kt">Z</span><span class="o">.</span><span class="n">assert</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkEq</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="o">=&lt;&lt;</span><span class="w"> </span><span class="kt">Z</span><span class="o">.</span><span class="n">mkSub</span><span class="w"> </span><span class="p">[</span><span class="n">d</span><span class="p">,</span><span class="n">b</span><span class="p">,</span><span class="n">htimesd</span><span class="p">]</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/DeductionPuzzle/blob/master/app/Main.hs" target="_blank">full source</a></pre></div>
+</p>
+
+Finally, we run the program and learn in mere milliseconds that we had guessed wrong that j is a boolean answer as the program
+presents us with a <code>Nothing</code> result. Changing that around produces a solution to our puzzle in a similarly near instantaneous fashion:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kt">Just</span><span class="w"> </span><span class="p">(</span><span class="kt">Solution</span><span class="w"> </span><span class="p">{</span><span class="n">a</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="mi">144</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">True</span><span class="p">,</span><span class="w"> </span><span class="n">d</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">e</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">False</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="mi">24</span><span class="p">,</span><span class="w"> </span><span class="n">g</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">False</span><span class="p">,</span><span class="w"> </span><span class="n">h</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="o">-</span><span class="mi">12</span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">True</span><span class="p">,</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">Right</span><span class="w"> </span><span class="p">(</span><span class="o">-</span><span class="mi">16</span><span class="p">)})</span>
+</pre></div>
+
+</p>
+
+SMT solvers truly are the Deus Ex Machina of the puzzle world. The complete project and source can be found at <a href="https://github.com/HugoPeters1024/DeductionPuzzle">https://github.com/HugoPeters1024/DeductionPuzzle</a>.
+
+
+
+
+
+
+    
+    <div id="gitalk-container"></div>
+<script>
+const gitalk = new Gitalk({
+  clientID: "a1da1553c3ddbf769a52",
+  clientSecret: "1ad095f6d5d87b7818859fa8184bd422fca65253",
+  repo: 'blog',      // The repository of store comments,
+  owner: 'HugoPeters1024',
+  admin: ['HugoPeters1024'],
+  id: "15",      // Ensure uniqueness and length less than 50
+  number: "15",
+  distractionFreeMode: false  // Facebook-like distraction free mode
+})
+
+gitalk.render('gitalk-container')
+</script>
+    
+  <div class="modified-at"> 
+    <small>last modified: May 29, 2026 at 09:35</small>
+  </div>
+
+
+    </div>
+  </div>
+
+  
+    <footer>
+    Hugo Peters &middot; hpeters1024@gmail.com &middot; running on a raspberry pi 3b+
+</footer>
+  
+
+</body>
+</html>

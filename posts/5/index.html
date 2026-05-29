@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+  <script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/public/pygments.css">
+  <link rel="stylesheet" type="text/css" href="/public/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  
+  
+  
+  <link rel="alternate" type="application/rss+xml" title="Hugo's Blog" href="/feed.xml">
+  <link rel="icon" href="/posts/5/icon.png">
+  <title>The fun of playing with shaders</title>
+</head>
+<body>
+  
+
+  
+    <header>
+    <div class="logo"><a href="/">Hugo's Blog</a></div>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <nav>
+        <a href="/">Home</a>
+        <a href="/posts">Posts</a>
+        <a href="/feed.xml">RSS</a>
+    </nav>
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+</header>
+  
+
+  <div class="content">
+    <div class="content-page">
+    
+  <div class="code-languages">
+    
+    <div class="code-language">C++</div>
+    
+    <div class="code-language">glsl</div>
+    
+  </div>
+  <h1>The fun of playing with shaders</h1>
+  
+
+<h2>Summary</h2>
+<p>
+  Today we will leverage our GPU to make a cool 3D demo that includes custom shaders, fancy lighting techniques
+  and even include a physics engine to enable have some interaction. If realism is your vice than it will be a 
+  bitter story, for today we only care about creating something that looks cool and can handle a shit ton 
+  (order of 10<sup>3</sup> to be precise) light sources.
+</p>
+
+<p>
+You can check out the final result here: <a target="_blank" href="https://github.com/HugoPeters1024/physics-demo">Github</a>
+</p>
+
+
+
+<h2>Introduction</h2>
+
+Inside your computer is a device that is amazingly powerful but also tediously hard to use. 
+Your Graphics Processing Unit (GPU) is responsible for pretty much anything visual. Even if you
+do not have a dedicated graphics card, then you likely have a CPU that has onboard graphics. Basically
+a small build in GPU, which is still quite powerful. It provides all those millions of pixels on your screen
+with a color to display, often 60 times per second or more! So it goes without saying that its reputation as
+a workhorse precedes it. Now let's use it to have some fun.
+
+<h2>Step 1: Some mountains</h2>
+As my profile picture on the <a href="/">/about</a> reveals, mountains are my jam. They are an inspiration,
+a place where you can lose time and get some great ideas about what to do with your time in the flatlands later.
+So let the first building block be homage to them giants. In my opinion, to only proper way to get mountains is to
+use a random process, we shouldn't be playing god after all. The process of generating terrain is actually pretty
+straightforward using a height-map. A height-map is an image that contains a luminance value per pixel indicating the
+height of that pixel. You can compare it to looking at a satellite photo. 
+
+<div class="window">
+  <figure> 
+    <div style="display:flex">
+      <img src="realmountains.jpg" style="max-width:50%"/ >
+      <img src="perlinnoise.png" style="max-width:50%"/ >
+    </div>
+    <br/>
+    <figcaption>
+      Figure 1: On the left: a satellite photo of a mountain area, on the right: perlin noise.
+    </figcaption>
+  </figure>
+</div>
+
+<p>
+Now all we have to do is convert that map to a large list of triangles. We can regard every 2x2 grid pixels as a
+quad which we can fill using two triangles. Then we just slap on a simple grass texture.<sup><a href="#notes">1</a></sup>
+</p>
+
+<figure>
+  <img src="renderedheightmap.png" style="max-width:100%"/ >
+  <figcaption>
+    Figure 2: A simple rendering of our heightmap. It has no shading implemented and consequently
+    doesn't look very attractive yet.
+  </figcaption>
+</figure>
+
+<h2>Step 2: Skybox and global illumination</h2>
+To fill the black void and get a sense of fresh air we could put a big box around our world with the texture of sky with mountains on it. This way we get the illusion that we are part of a much much bigger world.
+
+<figure>
+  <img src="cubemaps_skybox.png" style="max-width: 100%" />
+  <figcaption>
+    Figure 3: A skybox needs a texture that can be mapped on the inside. Such a texture is
+    of referred to as a 'cubemap'. This cubemap was blatantly copied from the wonderful skybox
+    tutorial of <a href="http://https://learnopengl.com/Advanced-OpenGL/Cubemaps">LearnOpenGL</a>
+  <figcaption>
+</figure>
+
+<p>
+  The fact that the sky now contains a sun makes it even more obvious that our mountains are
+  lacking proper shading. We could solve this by introducing a point light at a location that
+  matches the texture. Shading with a point light is quite simple, we only look at the angle with
+  which the light hits our geometry. For every pixel on the heightmap we know the direction of 
+  the normal (a vector perpendicular to the triangle it belongs to) and we can calculate the angle between that vector and a vector pointing to the light source. If we use the cosine of this angle
+  a scalar we get a situation in which fragments that are facing the light directly will get cos(0)=1, maximum illumination, whilst fragments completely perpendicular to the light will get cos(1/2*	&pi;) = 0, or no illumination. 
+</p>
+
+<p>
+  Now it is not our intention to create some sort of devilish light that contributes negatively to
+  fragments facing away so we should not forget to clamp our scalar to not go below 0.
+</p>
+
+<p>
+  Finally, light does not travel without cost, or more accurately, light does not stay focused as it spreads out over a bigger area. So in addition to the angle, we should also use the squared
+  distance to the light as a falloff mechanism.
+</p>
+
+<p>
+  The pseudo code for the fragment shader is below.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1">// Global illumination fragment shader</span>
+<span class="cp">#version 450</span>
+<span class="k">uniform</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">uCamPos</span><span class="p">;</span>
+<span class="k">uniform</span><span class="w"> </span><span class="kt">sampler2D</span><span class="w"> </span><span class="n">tex</span><span class="p">;</span>
+<span class="k">uniform</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">lightPos</span><span class="p">;</span>
+<span class="k">uniform</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">lightCol</span><span class="p">;</span>
+
+<span class="k">in</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">uv</span><span class="p">;</span>
+<span class="k">in</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">fragPos</span><span class="p">;</span><span class="w"> </span><span class="c1">// World space position of the fragment</span>
+<span class="k">in</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">fragNormal</span><span class="p">;</span>
+
+<span class="k">out</span><span class="w"> </span><span class="kt">vec4</span><span class="w"> </span><span class="n">color</span><span class="p">;</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="c1">// define a vector towards the light source</span>
+<span class="w">    </span><span class="kt">vec3</span><span class="w"> </span><span class="n">lightRay</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">lightPos</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">fragPos</span><span class="p">;</span>
+
+<span class="w">    </span><span class="c1">// dot product of a vector with itself gives the square length.</span>
+<span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">lightDis2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">lightRay</span><span class="p">,</span><span class="w"> </span><span class="n">lightRay</span><span class="p">);</span>
+
+<span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">falloff</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">1.0</span><span class="n">f</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">lightDis2</span><span class="p">;</span>
+
+<span class="w">    </span><span class="kt">vec3</span><span class="w"> </span><span class="n">lightNormal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">normalize</span><span class="p">(</span><span class="n">lightRay</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// Use the angle between the normal and the light vector to get a scalar</span>
+<span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">diffuse</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">max</span><span class="p">(</span><span class="n">dot</span><span class="p">(</span><span class="n">lightNormal</span><span class="p">,</span><span class="w"> </span><span class="n">fragNormal</span><span class="p">),</span><span class="w"> </span><span class="mo">0</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">color</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">diffuse</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">texture</span><span class="p">(</span><span class="n">tex</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<figure>
+  <img src="renderedheightmapwithskybox.png" style="max-width: 100%" />
+  <figcaption>
+    Figure 4: Our scene now rendered with a skybox and a single bright point light that
+    represents the sun.
+  <figcaption>
+</figure>
+
+<h2>Step 3: More lightsources</h2>
+<p>
+  In the previous step we have introduced our first light source. The information for this light
+  source was given to our shader via uniform variables: one vec3 for the color and another vec3 
+  for the position.
+</p>
+
+<p>
+  This traditional method is all fine and dandy until you realise that the fragment shader is 
+  executed for every pixel that is rendered, even if another object is rendered on top of it later! 
+  This means that not only do we have to iterate over all light sources for every pixel we render, 
+  but we are also likely to do all those, rather non-trivial, calculations for nothing as the fragment 
+  may turn out to be behind other fragments. This especially becomes a problem when we add more light
+  sources and more and more illuminance calculations need to be added together.
+</p>
+
+<p>
+  The solution for this is a very neat trick called <a href="https://en.wikipedia.org/wiki/Deferred_shading#History">Deferred Shading</a>,
+  which was developed back in 1988 by Michael Deering<sup><a href="#notes">2</a></sup>. The idea is quite simple, instead actually performing
+  the calculation for lightness we just save all the values we need for it to a set of textures. Now if fragments get rendered in front
+  it we haven't wasted as much effort. For a minimal example we need at least the following pieces of information to be saved per fragment.
+
+  <ul>
+    <li>The diffuse color</li>
+    <li>The specular color</li>
+    <li>The world space position</li>
+    <li>The normal</li>
+  </ul>
+
+  In our case these texture might look something like this:
+</p>
+
+
+<div class="window">
+  <figure> 
+    <div style="display:flex;flex-wrap:wrap">
+      <img src="albedotexture.png" style="max-width:50%"/ >
+      <img src="speculartexture.png" style="max-width:50%"/ >
+      <img src="worldpostexture.png" style="max-width:50%"/ >
+      <img src="normaltexture.png" style="max-width:50%"/ >
+    </div>
+    <br/>
+    <figcaption>
+      Figure 5: The four textures generated during the first pass of a
+      deferred shading pipeline. I added some simple stairs to make the example
+      more interesting.
+    </figcaption>
+  </figure>
+</div>
+
+<p>
+ Now our lighting pass is not much different, instead of getting the information from the vertex,
+ we read it from the textures we generated in first pass.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="cp"># version 450</span>
+
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">uCamPos</span><span class="p">;</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">3</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">uTime</span><span class="p">;</span>
+
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">4</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">sampler2D</span><span class="w"> </span><span class="n">posTex</span><span class="p">;</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">5</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">sampler2D</span><span class="w"> </span><span class="n">normalTex</span><span class="p">;</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">6</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">sampler2D</span><span class="w"> </span><span class="n">albedoTex</span><span class="p">;</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">7</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">sampler2D</span><span class="w"> </span><span class="n">lightingTex</span><span class="p">;</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">lightProperties</span><span class="p">;</span>
+
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">9</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">screenSize</span><span class="p">;</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">10</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">lightPos</span><span class="p">;</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">11</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">vec3</span><span class="w"> </span><span class="n">lightCol</span><span class="p">;</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">13</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">lightness</span><span class="p">;</span>
+
+<span class="k">out</span><span class="w"> </span><span class="kt">vec4</span><span class="w"> </span><span class="n">color</span><span class="p">;</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="c1">//color = vec4(1,1,1,0.2f); return;</span>
+<span class="w">    </span><span class="kt">vec2</span><span class="w"> </span><span class="n">uv</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">gl_FragCoord</span><span class="p">.</span><span class="n">xy</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">screenSize</span><span class="p">;</span>
+
+<span class="w">    </span><span class="kt">vec3</span><span class="w"> </span><span class="n">fragNormal</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">normalize</span><span class="p">(</span><span class="n">texture</span><span class="p">(</span><span class="n">normalTex</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">).</span><span class="n">xyz</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">vec3</span><span class="w"> </span><span class="n">fragPos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">texture</span><span class="p">(</span><span class="n">posTex</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">).</span><span class="n">xyz</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">vec3</span><span class="w"> </span><span class="n">fragColor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">texture</span><span class="p">(</span><span class="n">albedoTex</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">).</span><span class="n">xyz</span><span class="p">;</span>
+
+<span class="w">    </span><span class="c1">// We use only the red channel as the specular value</span>
+<span class="w">    </span><span class="kt">vec3</span><span class="w"> </span><span class="n">lightingValues</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">texture</span><span class="p">(</span><span class="n">lightingTex</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">).</span><span class="n">rgb</span><span class="p">;</span>
+
+<span class="w">    </span><span class="p">...</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<p>
+  Finally we can render a sphere with a radius that is proportional to the light's brightness
+  and use the lighting shader above to color each fragment. This gives two major speedups. First
+  of all, we don't perform lighting calculations for fragments that are too far away from the light
+  source to anything at all. Secondly, when a light source is behind us, the process is already stopped
+  by clipping the sphere against the view frustrum, saving a lot of time and effort.
+</p>
+
+<div class="window">
+  <figure>
+    <img src="finalresult.png" style="max-width:100%"/>
+    <figcaption>Figure 6: The final result with many many light sources.</figcaption>
+  </figure>
+</div>
+
+<h2>Step 4: Post processing and importing a physics engine</h2>
+Let's just pretend like that costs no effort at all and jump to end result:
+
+<div class="window">
+  <figure>
+    <img src="animation.gif" loop=infinite style="max-width:100%"/>
+    <figcaption>Figure 6: The final result with many many light sources. (I can't get the gif to loop
+    so feel free to refresh and quickly scroll down)</figcaption>
+  </figure>
+</div>
+
+<h2>Final thoughts</h2>
+<p>
+  I am quite pleased with the end result. Performance wise I was able to render about 2500 light sources, including a lantern mesh and halo glow, before the framerate dropped below 60fps.
+</p>
+
+<p>
+  If you want a better source to learn how to do it yourself you must check out this post 
+  by <a href="https://learnopengl.com/Advanced-Lighting/Deferred-Shading">LearnOpenGL</a>, 
+  who does a far better job at explaining the technique than I do.
+</p>
+
+<p>
+All in all, this post is not my best work. I've been struggling to get it done and after
+a while it just became this ulcer that I just had to get through. And that is what I did.
+Sometimes quantity is better than quality, albeit for the writer, not the reader.
+</p>
+
+
+<a id="notes"> <h2>Notes</h2></a>
+
+<span class="citings">
+  <p>
+  1. Lovely seamless textures available for non-commercial purposes on <a href="http://davegh.com">davegh.com</a>
+  <br/>
+  2. You can read the paper <a href="https://doi.org/10.1145%2F378456.378468">here</a>.
+  </p>
+</span>
+
+
+
+    
+    <div id="gitalk-container"></div>
+<script>
+const gitalk = new Gitalk({
+  clientID: "a1da1553c3ddbf769a52",
+  clientSecret: "1ad095f6d5d87b7818859fa8184bd422fca65253",
+  repo: 'blog',      // The repository of store comments,
+  owner: 'HugoPeters1024',
+  admin: ['HugoPeters1024'],
+  id: "5",      // Ensure uniqueness and length less than 50
+  number: "5",
+  distractionFreeMode: false  // Facebook-like distraction free mode
+})
+
+gitalk.render('gitalk-container')
+</script>
+    
+  <div class="modified-at"> 
+    <small>last modified: May 29, 2026 at 11:08</small>
+  </div>
+
+
+    </div>
+  </div>
+
+  
+    <footer>
+    Hugo Peters &middot; hpeters1024@gmail.com &middot; running on a raspberry pi 3b+
+</footer>
+  
+
+</body>
+</html>

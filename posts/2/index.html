@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+  <script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/public/pygments.css">
+  <link rel="stylesheet" type="text/css" href="/public/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  
+  
+  
+  <link rel="alternate" type="application/rss+xml" title="Hugo's Blog" href="/feed.xml">
+  <link rel="icon" href="/posts/2/knight_icon.jpg">
+  <title>The Knight of Hamilton</title>
+</head>
+<body>
+  
+
+  
+    <header>
+    <div class="logo"><a href="/">Hugo's Blog</a></div>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <nav>
+        <a href="/">Home</a>
+        <a href="/posts">Posts</a>
+        <a href="/feed.xml">RSS</a>
+    </nav>
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+</header>
+  
+
+  <div class="content">
+    <div class="content-page">
+    
+  <div class="code-languages">
+    
+    <div class="code-language">python</div>
+    
+  </div>
+  <h1>The Knight of Hamilton</h1>
+  
+
+<h2>Preface: A game and its rules</h2>
+<i>
+<p>
+"Given a chessboard and a knight, can you find a path that will cover each cell once and exactly
+once? If you are able to do so faster than me you stand to win a fortune." 
+<p>- The prince of Hamilton</p>
+<p>P.S. </p>
+
+<p>
+Don't tell my dad I gamble for money</i>
+</p>
+
+<h2>Chapter 1: An impatient knight</h2>
+<p>
+A long time ago, in the old country of Hamilton, we find a brave young man riding a horse.
+Conflicted between the thrill of becoming an independent man and the distress of being
+sent away by his family, he confidently traverses the various terrains towards the royal palace.
+</p>
+
+<p>
+As the sun went down, our protagonist decided to take shelter in a small cabin. Although the 
+cabin was made of simple wooden logs, the ingenious structure suggested an owner that is smarter
+than most of its kind. The entrance was a small space between two life size, wooden statues of
+a king and queen as found on a chessboard. Inside, the floor was made of black and white tiles.
+One of the walls had a poem on it: <i>If shadow and light is a line you do not believe in,
+  add up down to left right and see if it is even.</i>
+<p>
+
+<p>
+As part of the payment for the overnight stay, the knight promised the isolated cabin owner to
+humor him with his life story. Next to the fireplace, accompanied by a pot of strong black
+coffee, the knight began: "As all boys in my family I am to leave my home at the age of 18, not
+to return until I have made my own fortune. This is the fate that my father and his fathers
+before him have suffered and been molded by." "And how will you, suffering young man, make
+your fortune?" the cabin owner asked. The knight proudly raised his chin and announced: "I will
+challenge the prince to a Knight's Tour. It is widely known that the winner is greatly rewarded."
+The cabin owner made a concerned face and asked: "Does the prize constitute an object on the
+first cell of chessboard, double on the second and so forth?" Slightly rattled by the very
+specific question the knight refuted that price would be a constant sum of money.
+</p>
+
+<p>
+As the conversation progresses the knight became more and more insecure. It was only now, when
+forced to formulate his ideas into words and sentences that he realized how unprepared he was.
+The cabin owner noticed his realization, took pity in his situation, and decided to help him.
+"Long ago, I was a student of pure mathematics and worked on the Knight's Tour problem 
+for very long." He compassionately hands the knight 
+<a href="https://doi.org/10.1016/0166-218X(92)00170-Q" target="_blank">a document.</a>.
+"It is very technical so please take your time to study it carefully." 
+</p>
+
+<p>
+But the words of the cabin owner would fall on deaf ears as the knight quickly browsed through
+all the pages. Back in his room, under the light of a dying candle, he read the following
+fact: <i>for an 8x8 chessboard there are 26,534,728,821,064 ways to complete a tour.</i> "What
+an incomprehensible gargantuan number!" the knight thought to himself. "I will go to the prince
+and challenge him, with so many solutions it is only a matter of chance until my guess beats
+his, skill does not defeat probability!"
+</p>
+
+<p>
+The cabin owner found himself being not at all surprised as he stumbled upon an empty bed that
+morning. The same bed the knight, contrary to most other days, was not thinking about as he
+galloped his horse onto the palace grounds. He tied his horse to the pole next to a small
+fountain; the animal gratefully indulged. At the main gate a bishop was reading a small
+bible in the shade. The knight politely asked him where he may find the Prince of Hamilton. 
+<i>"God does not play dice, and man should not either."</i> the bishop answered disapprovingly,
+as he pointed diagonally towards the field next to the royal garden. 
+</p>
+
+<p>
+The prince was lying on his back, looking at the clouds. His head swiftly lifted up as he heard
+the knight's footsteps approaching. Both of them knew why they were there. 
+</p>
+
+<p>
+Our Knight would later vividly recall the humiliating situation that took place in the
+garden. He and the prince started on opposite corners of a 6x6 chessboard, a board size 
+normally reserved for children. Regardless, our knight simply hopped in any random direction,
+constantly finding himself stuck on a cell without having visited all of them. In his distress
+he did not notice that the prince, somewhat similarly, is not completing the tour without 
+stopping sometimes, but he then retraces a few steps before proceeding instead of
+starting all over again. With tears of shame and anger burning behind his eyes, 
+the knight returned to the cabin.
+</p>
+
+<div class="window">
+<div class="panel">
+  <p>
+    <div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">tryRandom</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="n">w</span><span class="o">=</span><span class="mi">6</span>
+    <span class="n">h</span><span class="o">=</span><span class="mi">6</span>
+    <span class="c1"># Create an empty board</span>
+    <span class="n">board</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">w</span> <span class="o">*</span> <span class="n">h</span><span class="p">)</span>
+    <span class="p">(</span><span class="n">px</span><span class="p">,</span> <span class="n">py</span><span class="p">)</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">move_count</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">move_count</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">board</span><span class="p">[</span><span class="n">px</span> <span class="o">+</span> <span class="n">w</span> <span class="o">*</span> <span class="n">py</span><span class="p">]</span> <span class="o">=</span> <span class="n">move_count</span>
+        <span class="c1"># Filter moves that do not exit</span>
+        <span class="c1"># the board and go to a non visited cell </span>
+        <span class="n">validMoves</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">dx</span><span class="p">,</span> <span class="n">dy</span><span class="p">)</span> <span class="ow">in</span> <span class="n">getMoves</span><span class="p">():</span>
+            <span class="n">nx</span> <span class="o">=</span> <span class="n">px</span> <span class="o">+</span> <span class="n">dx</span>
+            <span class="n">ny</span> <span class="o">=</span> <span class="n">py</span> <span class="o">+</span> <span class="n">dy</span>
+            <span class="k">if</span> <span class="n">nx</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> \
+               <span class="n">nx</span> <span class="o">&lt;</span>  <span class="n">w</span> <span class="ow">and</span> \
+               <span class="n">ny</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> \
+               <span class="n">ny</span> <span class="o">&lt;</span>  <span class="n">h</span> <span class="ow">and</span> \
+               <span class="n">board</span><span class="p">[</span><span class="n">nx</span> <span class="o">+</span> <span class="n">w</span> <span class="o">*</span> <span class="n">ny</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">validMoves</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">))</span>
+
+        <span class="c1"># No more valid moves, stop</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">validMoves</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">move_count</span>
+
+        <span class="c1"># Do one of the possible moves at random</span>
+        <span class="p">(</span><span class="n">px</span><span class="p">,</span> <span class="n">py</span><span class="p">)</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">validMoves</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">getMoves</span><span class="p">():</span>
+    <span class="k">return</span> <span class="p">[(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span>
+            <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">)]</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/knightstour/blob/master/random_move.py" target="_blank">full source</a></pre></div>
+</p>
+</div>
+  <div class="panel">
+  <figure>
+    <img src="random_move.png" alt="distribution plot of moves until blocked when randomly
+    chosen" style="max-width:100%">
+    <figcaption>Fig.1 - Distribution plot of the number of moves made before the  
+      knight was stuck. When any of these numbers would have been 36, the knight would have
+      completed a tour.</figcaption>
+  </figure>
+</div>
+</div>
+
+
+<h2>Chapter 2: We must go deeper</h2>
+<p>
+  The cabin owner, although truly feeling compassion towards the knight, also
+  felt content with knowing the knight would be around for a while. The next day
+  he took the knight out for a walk in the nearby forest. He pointed at the trees
+  and with a soft voice started to describe how the each branch itself looks like
+  a tree, albeit smaller. Symptomatic of overcoming his latest brush with defeat,
+  the knight started to climb up in one of the trees. Although not fully realizing
+  the meaning behind the cabin owner's words, he appreciated the insight and felt
+  it ought to be meaningful someday.
+</p>
+
+<p>
+  That evening, the cabin owner showed the knight a different puzzle, a maze to
+  be precise. "Neither my mind nor my writing hand has the endurance to work out
+  such a large maze!" the knight screamed. With a grin the cabin owner answered:
+  "Good, now that we have established that, we can think of a way to do this better."
+  The cabin owner reached in a cabinet and took out a robust laptop with a mechanical 
+  keyboard. "Perhaps we can just focus on a way to think about how to solve it and leave
+  the actual calculations to the computer," the cabin owner proposed.
+</p>
+
+<p>
+  After hours of puzzling the knight was now completely familiar with the concept
+  of <a href="https://en.wikipedia.org/wiki/Depth-first_search">'Depth First Search'</a>.
+  "It is just like the trees in the forest!" the knight yelled euphorically. Inside
+  the knights head the cogs started turning.. "Well if you have a chessboard, each cell
+  marked with the order of visiting it, or a 0 if it has never been visited, than we can
+  consider each possible move a sub tree of that 'node'! My fortune must be somewhere
+  at the top of the tree, like a golden leaf! The prince did not say anything
+  about using computers, I can simply program this out and let the computer find the solution!"
+</p>
+
+<div class="window">
+  <div class="panel">
+    
+    <div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">printBoard</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">h</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">w</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">board</span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">w</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="si">}</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">isValid</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">pos</span><span class="p">):</span>
+    <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="o">=</span> <span class="n">pos</span>
+    <span class="k">return</span> <span class="n">x</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> \
+           <span class="n">x</span> <span class="o">&lt;</span>  <span class="n">w</span> <span class="ow">and</span> \
+           <span class="n">y</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> \
+           <span class="n">y</span> <span class="o">&lt;</span>  <span class="n">h</span> <span class="ow">and</span> \
+           <span class="n">board</span><span class="p">[</span><span class="n">x</span> <span class="o">+</span> <span class="n">w</span> <span class="o">*</span> <span class="n">y</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">getMoves</span><span class="p">():</span>
+    <span class="k">return</span> <span class="p">[(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span>
+            <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">)]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">getSuccessors</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">count</span><span class="p">):</span>
+    <span class="p">(</span><span class="n">px</span><span class="p">,</span> <span class="n">py</span><span class="p">)</span> <span class="o">=</span> <span class="n">pos</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">dx</span><span class="p">,</span> <span class="n">dy</span><span class="p">)</span> <span class="ow">in</span> <span class="n">getMoves</span><span class="p">():</span>
+        <span class="n">nx</span> <span class="o">=</span> <span class="n">px</span> <span class="o">+</span> <span class="n">dx</span>
+        <span class="n">ny</span> <span class="o">=</span> <span class="n">py</span> <span class="o">+</span> <span class="n">dy</span>
+        <span class="k">if</span> <span class="n">isValid</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="p">(</span><span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)):</span>
+            <span class="n">new_board</span> <span class="o">=</span> <span class="n">board</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">new_board</span><span class="p">[</span><span class="n">nx</span> <span class="o">+</span> <span class="n">w</span> <span class="o">*</span> <span class="n">ny</span><span class="p">]</span> <span class="o">=</span> <span class="n">count</span><span class="o">+</span><span class="mi">1</span>
+            <span class="k">yield</span> <span class="p">(</span><span class="n">new_board</span><span class="p">,</span> <span class="p">(</span><span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">),</span> <span class="n">count</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">findSolution</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">show</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="n">init_board</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">w</span><span class="o">*</span><span class="n">h</span><span class="p">)</span>
+    <span class="n">init_board</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">stack</span> <span class="o">=</span> <span class="p">[(</span><span class="n">init_board</span><span class="p">,</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">),</span> <span class="mi">1</span><span class="p">)]</span>
+    <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">stack</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">count</span><span class="p">)</span> <span class="o">=</span> <span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="c1"># Check if the tour has been completed</span>
+        <span class="k">if</span> <span class="n">count</span> <span class="o">==</span> <span class="n">w</span><span class="o">*</span><span class="n">h</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">show</span><span class="p">:</span>
+                <span class="n">printBoard</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="c1"># Add all possible successors </span>
+        <span class="c1"># to the top of the stack</span>
+        <span class="k">for</span> <span class="n">succ</span> <span class="ow">in</span> <span class="n">getSuccessors</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">pos</span><span class="p">,</span> <span class="n">count</span><span class="p">):</span>
+            <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">succ</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Solution does not exist&quot;</span><span class="p">)</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/knightstour/blob/master/depth_first.py" target="_blank">full source</a></pre></div>
+
+  </div>
+  <div class="panel">
+    <table class="rwd-table">
+      <thead>
+        <tr><th>Board Size</th><th>Seconds to Find a Solution</th></tr>
+      </thead>
+      <tbody>
+      <tr><td>3x4</td><td>0.0000404</td></tr>
+      <tr><td>4x4</td><td>No solution</td></tr>
+      <tr><td>4x5</td><td>0.00330</td></tr>
+      <tr><td>5x5</td><td>0.0160</td></tr>
+      <tr><td>5x6</td><td>0.0515</td></tr>
+      <tr><td>6x6</td><td>39.2</td></tr>
+      </tbody>
+    </table>
+
+    <p>
+    <div class="highlight"><pre><span></span>6x6<span class="w"> </span>solution:
+<span class="m">1</span><span class="w">    </span><span class="m">12</span><span class="w">    </span><span class="m">31</span><span class="w">    </span><span class="m">34</span><span class="w">    </span><span class="m">19</span><span class="w">    </span><span class="m">36</span>
+<span class="m">30</span><span class="w">   </span><span class="m">5</span><span class="w">     </span><span class="m">18</span><span class="w">    </span><span class="m">11</span><span class="w">    </span><span class="m">28</span><span class="w">    </span><span class="m">33</span>
+<span class="m">13</span><span class="w">   </span><span class="m">2</span><span class="w">     </span><span class="m">29</span><span class="w">    </span><span class="m">32</span><span class="w">    </span><span class="m">35</span><span class="w">    </span><span class="m">20</span>
+<span class="m">6</span><span class="w">    </span><span class="m">23</span><span class="w">    </span><span class="m">4</span><span class="w">     </span><span class="m">17</span><span class="w">    </span><span class="m">10</span><span class="w">    </span><span class="m">27</span>
+<span class="m">3</span><span class="w">    </span><span class="m">14</span><span class="w">    </span><span class="m">25</span><span class="w">    </span><span class="m">8</span><span class="w">     </span><span class="m">21</span><span class="w">    </span><span class="m">16</span>
+<span class="m">24</span><span class="w">   </span><span class="m">7</span><span class="w">     </span><span class="m">22</span><span class="w">    </span><span class="m">15</span><span class="w">    </span><span class="m">26</span><span class="w">    </span><span class="m">9</span>
+</pre></div>
+
+</p>
+
+  </div>
+</div>
+
+<p>
+Without damaging his ego the knight was now able to see that victory was not yet in
+sight. The cabin owner had taught him to call the devil by his name 'exponential complexity'.
+Not only did he remember that the prince was able to solve the 6 by 6 board much faster
+than 39 seconds, he also knew that the 6 by 6 board was merely a warm up. However, following
+the exponential curve it would seem that solving the tour on boards larger than that would
+take minutes and quickly hours or days. As the sun set completely, the golden glow that
+seemed to radiate from the leaves, fades leaving a colorless soon to be compost.
+</p>
+
+<h2>Chapter 3: Taking a step back</h2>
+
+<p>
+At a loss for thinking of a better algorithm, the knight focused on optimizing the current
+one. He noticed how having to copy every board state to generate a successor was a non
+trivial operation compared to the rest. Furthermore, having to hold the stack in memory
+did feel a little redundant.
+<p>
+
+<p>
+Deep in the cellar of the cabin, a place filled with books and dust, the knight found
+a document on <a href="https://nl.wikipedia.org/wiki/Backtracking">Backtracking</a>. At
+first glance it appeared to be analogous to depth first search, but there were some
+benefits. First of all, there was no need to pop and push to a stack<sup>(*1)</sup>.
+Secondly, no copy of the board was needed, at every level of recursion the same board
+could be mutated in place. 
+</p>
+
+<p>
+The knight spent the rest of the week sweating away implementing the Knight's Tour
+solver using a backtracking approach. When it was finally ready, he couldn't wait
+to try out his new solution and ran it for a 6x6 board: 5.36 seconds! His heart started
+racing and a feeling of euphoria as he remembered the prince having to think a bit more
+than 5.36 seconds. Just to make sure he also plugged in 7x7: 0.34 seconds! Phenomenal!
+"If the devil is exponential, then god must be inverse exponential," the knight
+triumphantly thought to himself.
+</p>
+
+<p>
+His memory seemed to have served him correctly. The prince gave a small bow as he
+managed to beat him on the 6x6. "My congratulations my good man, but you know that
+to win the fortune you must beat me on not only 6x6 board, several larger ones as
+well," said the prince. The knight confidently followed the prince to another
+part of the garden where a 6x7 board was located. "Let's take it one step further,"
+said the prince invitingly. With the memory of the incredible speed in which he was
+able to solve a 7x7 he was already daydreaming of the surprised look the prince
+will have after beating him.
+</p>
+
+<p>
+Frustratingly, the truth could not be further removed from his dreams, as even after
+10 minutes, when the prince had long completed his tour, the knight was still
+backtracking. Feeling more flabbergasted than sad, he congratulated the prince and
+took off again to the old familiar cabin.
+</p>
+
+
+<div class="window">
+  <div class="panel">
+    
+    <div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">printBoard</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">h</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">w</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">board</span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">w</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="si">}</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">isValid</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">pos</span><span class="p">):</span>
+    <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="o">=</span> <span class="n">pos</span>
+    <span class="k">return</span> <span class="n">x</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> \
+           <span class="n">x</span> <span class="o">&lt;</span>  <span class="n">w</span> <span class="ow">and</span> \
+           <span class="n">y</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> \
+           <span class="n">y</span> <span class="o">&lt;</span>  <span class="n">h</span> <span class="ow">and</span> \
+           <span class="n">board</span><span class="p">[</span><span class="n">x</span> <span class="o">+</span> <span class="n">w</span> <span class="o">*</span> <span class="n">y</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span> \
+
+<span class="k">def</span><span class="w"> </span><span class="nf">getMoves</span><span class="p">():</span>
+    <span class="k">return</span> <span class="p">[(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span>
+            <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">)]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">backtrack</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">move_c</span><span class="p">,</span> <span class="n">show</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">move_c</span> <span class="o">==</span> <span class="n">w</span> <span class="o">*</span> <span class="n">h</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">show</span><span class="p">:</span>
+            <span class="n">printBoard</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    
+    <span class="k">for</span> <span class="p">(</span><span class="n">dx</span><span class="p">,</span> <span class="n">dy</span><span class="p">)</span> <span class="ow">in</span> <span class="n">getMoves</span><span class="p">():</span>
+        <span class="n">nx</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="n">dx</span><span class="p">;</span>
+        <span class="n">ny</span> <span class="o">=</span> <span class="n">y</span> <span class="o">+</span> <span class="n">dy</span><span class="p">;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">isValid</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="p">(</span><span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)):</span>
+            <span class="k">continue</span>
+        <span class="n">move_c</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">board</span><span class="p">[</span><span class="n">nx</span> <span class="o">+</span> <span class="n">w</span> <span class="o">*</span> <span class="n">ny</span><span class="p">]</span> <span class="o">=</span> <span class="n">move_c</span>
+        <span class="k">if</span> <span class="n">backtrack</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">,</span> <span class="n">move_c</span><span class="p">,</span> <span class="n">show</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="n">move_c</span><span class="o">-=</span><span class="mi">1</span>
+        <span class="n">board</span><span class="p">[</span><span class="n">nx</span> <span class="o">+</span> <span class="n">w</span> <span class="o">*</span> <span class="n">ny</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">return</span> <span class="kc">False</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">findSolution</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">show</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="n">board</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">w</span><span class="o">*</span><span class="n">h</span><span class="p">)</span>
+    <span class="n">board</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">backtrack</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">show</span><span class="p">)</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/knightstour/blob/master/backtracking.py" target="_blank">full source</a></pre></div>
+
+  </div>
+  <div class="panel">
+    <table class="rwd-table">
+      <thead>
+        <tr><th>Board Size</th><th>Seconds to Find a Solution</th></tr>
+      </thead>
+      <tbody>
+      <tr><td>3x4</td><td>0.000484</td></tr>
+      <tr><td>4x4</td><td>No solution</td></tr>
+      <tr><td>4x5</td><td>0.0256</td></tr>
+      <tr><td>5x5</td><td>0.166 </td></tr>
+      <tr><td>5x6</td><td>27.1</td></tr>
+      <tr><td>6x6</td><td>5.36</td></tr>
+      <tr><td>6x7</td><td>very long</td></tr>
+      <tr><td>7x7</td><td>0.338</td></tr>
+      <tr><td>7x8</td><td>very long</td></tr>
+      <tr><td>8x8</td><td>very long</td></tr>
+      </tbody>
+    </table>
+    <p>
+    <i>
+      Interestingly the time to complete appears to be not at all related
+      to the size of board. (Although larger boards never appear to have a
+      quick solution with this algorithm.)
+    </i>
+    </p>
+  </div>
+</div>
+
+<h2>Chapter 4: Depression, Despair, and Death</h2>
+<p>
+The knight was unable to hold back a few tears as he attended the
+funeral of the cabin owner. He was the only soul there, a fact only
+contributing to the tragedy. It had taken the knight multiple days
+to carve out the text in the gravestone. He found it only appropriate
+to make the cabin owner's most famous words were to ring into eternity:
+
+<p>
+<i>"If a work of fiction burns in a fire then the story dies with its
+writer. If a work of science burns in a fire, only the name of the
+author changes."</i> 
+</p>
+
+<p>
+The knight's soft sobbing changed to laughter because he only just now
+realised the irony of feeling resentment towards the cabin owner
+for not ever revealing the solution of that cursed cursed game.
+</p>
+
+<h2>Chapter 5: Sciens ex machina</h2>
+<p>
+His head was covered in sweat. The sheets were largely on the ground.
+The knight was having a nightmare<sup>(*2)</sup>. "No more ideas, oh
+brave knight," said the demon mockingly with a deep voice. "Your parents
+must be celebrating, they knew you would never be smart enough to make
+a fortune." The knight was paralyzed, it felt like the gravity dial
+was turned way up. Then something grabbed him by the hand and flew with
+him in the air.
+</p>
+
+<p>
+After an incomprehensible flight path, he was gracefully laid down in a 
+soft green patch of grass. The creature that had brought him there landed
+next to him. "What were you thinking, wandering so far from the human world,"
+the creature began. "Have your parents never told you to first look for
+answers close by? If you run all the way around the world you might not
+find the gold buried in your backyard. It's all about heuristics really..."
+</p>
+
+<p>
+The knight woke up feeling like his head was hit with a brick. That feeling
+would persist until well after sunset when it suddenly started to retreat.
+Like ebb and flow the headache replaced itself with an unprecedented clarity
+and one word from all the books in the cabin's cellar echoed in his skull:
+"Warnsdorff, Warnsdorff, Warnsdorff..."
+</p>
+
+<p>
+In the weeks following the cabin owner's death, the knight had spent most of
+his time on taking care of the cabin and rarely thought of the Knight's Tour.
+When he did try to gain more knowledge by scrolling through the old books, he
+was often distracted by his persisting grief. Yet that evening, having reflected
+all day on his dream it all seemed to come together. Every word he read but
+forget came surging back into his consciousness. "Warnsdorff.. Warnsdorff.. Warnsdorff's
+method!," his memory screamed. It was all so clear now. Backtracking is not that
+bad of an idea at all but it matters which path you choose. That's why the results
+varied so much, sometimes he was just lucky choosing the right move. Backtracking is
+of course based on the fact that you do not know the correct path upfront but that
+doesn't mean that you cannot make an educated guess. It's like the winged creature
+from his dream suggested, if you go far from home to find adventure you will miss the
+small adventures close by forever. Just like the cells on the chessboard, if you
+do not visit the cells that are almost boxed in you may never see them again! You
+first got to choose the nearly closed doors before exploring new ones. That's the
+heuristic! Choose a move that has the least follow up moves first!
+</p>
+
+<div class="window">
+  <div class="panel">
+    
+    <div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="c1"># Allow for more recursion</span>
+<span class="n">sys</span><span class="o">.</span><span class="n">setrecursionlimit</span><span class="p">(</span><span class="mi">100000</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">printBoard</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">y</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">h</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">w</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">board</span><span class="p">[</span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">w</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">y</span><span class="p">]</span><span class="si">}</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">isValid</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">pos</span><span class="p">):</span>
+    <span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span> <span class="o">=</span> <span class="n">pos</span>
+    <span class="k">return</span> <span class="n">x</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> \
+           <span class="n">x</span> <span class="o">&lt;</span>  <span class="n">w</span> <span class="ow">and</span> \
+           <span class="n">y</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> \
+           <span class="n">y</span> <span class="o">&lt;</span>  <span class="n">h</span> <span class="ow">and</span> \
+           <span class="n">board</span><span class="p">[</span><span class="n">x</span> <span class="o">+</span> <span class="n">w</span> <span class="o">*</span> <span class="n">y</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span> \
+
+<span class="k">def</span><span class="w"> </span><span class="nf">getMoves</span><span class="p">():</span>
+    <span class="k">return</span> <span class="p">[(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span>
+            <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">)]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">countMoves</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+    <span class="s2">&quot;Count the number of valid moves from a given position&quot;</span>
+    <span class="n">count</span><span class="o">=</span><span class="mi">0</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">dx</span><span class="p">,</span> <span class="n">dy</span><span class="p">)</span> <span class="ow">in</span> <span class="n">getMoves</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">isValid</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="p">(</span><span class="n">x</span><span class="o">+</span><span class="n">dx</span><span class="p">,</span> <span class="n">y</span><span class="o">+</span><span class="n">dy</span><span class="p">)):</span>
+            <span class="n">count</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">count</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">getMovesHeuristic</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Note that to calculate the heuristic, we already need</span>
+<span class="sd">    to find the new absolute position, so be might as </span>
+<span class="sd">    well give that back instead of doing it again later.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">choices</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="c1"># Determine all valid moves add annotate them</span>
+    <span class="c1"># with the heuristic, i.e. the number of follow</span>
+    <span class="c1"># up moves.</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">dx</span><span class="p">,</span> <span class="n">dy</span><span class="p">)</span> <span class="ow">in</span> <span class="n">getMoves</span><span class="p">():</span>
+        <span class="n">nx</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="n">dx</span>
+        <span class="n">ny</span> <span class="o">=</span> <span class="n">y</span> <span class="o">+</span> <span class="n">dy</span>
+        <span class="k">if</span> <span class="n">isValid</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="p">(</span><span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)):</span>
+            <span class="n">choices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">((</span><span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">),</span> <span class="n">countMoves</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)))</span>
+    <span class="c1"># sort the position by their heuristic</span>
+    <span class="n">choices</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    <span class="c1"># strip the heuristic and the return</span>
+    <span class="c1"># the result</span>
+    <span class="k">return</span> <span class="p">[</span><span class="n">m</span> <span class="k">for</span> <span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="n">_</span><span class="p">)</span> <span class="ow">in</span> <span class="n">choices</span><span class="p">]</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">backtrack</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">move_c</span><span class="p">,</span> <span class="n">show</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">move_c</span> <span class="o">==</span> <span class="n">w</span> <span class="o">*</span> <span class="n">h</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">show</span><span class="p">:</span>
+            <span class="n">printBoard</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span>
+    
+    <span class="k">for</span> <span class="p">(</span><span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">)</span> <span class="ow">in</span> <span class="n">getMovesHeuristic</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">):</span>
+        <span class="c1"># No need to check the move, the heuristic</span>
+        <span class="c1"># function has already done that for us.</span>
+        <span class="n">move_c</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">board</span><span class="p">[</span><span class="n">nx</span> <span class="o">+</span> <span class="n">w</span> <span class="o">*</span> <span class="n">ny</span><span class="p">]</span> <span class="o">=</span> <span class="n">move_c</span>
+        <span class="k">if</span> <span class="n">backtrack</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">nx</span><span class="p">,</span> <span class="n">ny</span><span class="p">,</span> <span class="n">move_c</span><span class="p">,</span> <span class="n">show</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="n">move_c</span><span class="o">-=</span><span class="mi">1</span>
+        <span class="n">board</span><span class="p">[</span><span class="n">nx</span> <span class="o">+</span> <span class="n">w</span> <span class="o">*</span> <span class="n">ny</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">return</span> <span class="kc">False</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">findSolution</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">show</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="n">board</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">w</span><span class="o">*</span><span class="n">h</span><span class="p">)</span>
+    <span class="n">board</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">backtrack</span><span class="p">(</span><span class="n">board</span><span class="p">,</span> <span class="n">w</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">show</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No solution&quot;</span><span class="p">)</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/knightstour/blob/master/warndorff.py" target="_blank">full source</a></pre></div>
+
+  </div>
+  <div class="panel">
+    <table class="rwd-table">
+      <thead>
+        <tr><th>Board Size</th><th>Seconds to Find a Solution</th></tr>
+      </thead>
+      <tbody>
+      <tr><td>4x5</td><td>0.000161</td></tr>
+      <tr><td>5x5</td><td>0.000776</td></tr>
+      <tr><td>5x6</td><td>0.000304</td></tr>
+      <tr><td>6x6</td><td>0.000346</td></tr>
+      <tr><td>7x7</td><td>0.000561</td></tr>
+      <tr><td>8x8</td><td>0.000782</td></tr>
+      <tr><td>15x15</td><td>0.00338</td></tr>
+      <tr><td>50x50</td><td>0.0420</td></tr>
+      <tr><td>70x70</td><td>0.0762</td></tr>
+      <tr><td>40x100<sup>(*3)</sup></td><td>0.0572</td></tr>
+      </tbody>
+    </table>
+
+  </div>
+</div>
+
+Never before had a prince experienced that much agony and confusion as the time
+a most determined knight did not challenge him again; For with a broad smile on his face, the 
+knight went home with a fortune that no one could ever take away from him. When somebody
+would ever ask him about his fortune he would simply say <i>"If a work of fiction 
+burns in a fire then the story dies with its writer. If a work of science 
+burns in a fire, only the name of the author changes."</i> 
+
+<h2>Epilogue</h2>
+What the knight had learned was not simply the meaning of fortune, nor
+that the value of life did not have any monetary value. Not even that taking
+care of a cabin in the woods sounds like a pretty neat idea. Whilst all those things
+might be true, the real lesson is that an algorithm and its respective complexity
+alone is not always enough to make a judgement. Heuristics may not change
+the fact that it takes O(n<sup>2</sup>) to solve the Knight's Problem, yet it
+matters a hell of a lot.
+
+<h2>Notes</h2>
+
+<span class="citings">
+  <p>
+  *1 <i>Granted, the previously explicit stack is now obscured by, well literally
+    the process' stack in order to manage all the recursive calls. Backtracking is
+    therefore not significantly less memory intense (in fact, neither DFS nor backtracking
+    are memory intense at all)</i>
+  </p>
+  
+  <p>
+  *2 <i>This phenomenon is more commonly known as a 'knightmare'</i>
+  </p>
+
+  <p>
+  *3 <i>The inverse, 100x40, takes ages (longer than my patience at least), 
+    I have no idea why. Please let me know if you have any idea. (edit: my
+    hypothesis is that the unmeaningful order of moves are preserved when
+    heuristic is equal. It might be beneficial to make the getMoves() method
+    return the moves in a more semantically meaningful order, like as clockwise vectors)</i>
+  </p>
+
+</span>
+<p>
+The full source, including benchmarking can be found over on <a target="_blank" href="https://github.com/HugoPeters1024/knightstour">Github</a>
+</p>
+
+
+
+    
+    <div id="gitalk-container"></div>
+<script>
+const gitalk = new Gitalk({
+  clientID: "a1da1553c3ddbf769a52",
+  clientSecret: "1ad095f6d5d87b7818859fa8184bd422fca65253",
+  repo: 'blog',      // The repository of store comments,
+  owner: 'HugoPeters1024',
+  admin: ['HugoPeters1024'],
+  id: "2",      // Ensure uniqueness and length less than 50
+  number: "2",
+  distractionFreeMode: false  // Facebook-like distraction free mode
+})
+
+gitalk.render('gitalk-container')
+</script>
+    
+  <div class="modified-at"> 
+    <small>last modified: May 29, 2026 at 11:08</small>
+  </div>
+
+
+    </div>
+  </div>
+
+  
+    <footer>
+    Hugo Peters &middot; hpeters1024@gmail.com &middot; running on a raspberry pi 3b+
+</footer>
+  
+
+</body>
+</html>

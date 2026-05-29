@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+  <script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/public/pygments.css">
+  <link rel="stylesheet" type="text/css" href="/public/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  
+  
+  
+  <link rel="alternate" type="application/rss+xml" title="Hugo's Blog" href="/feed.xml">
+  <link rel="icon" href="/posts/3/icon.png">
+  <title>C# can be functional pt1: The Maybe Monad</title>
+</head>
+<body>
+  
+
+  
+    <header>
+    <div class="logo"><a href="/">Hugo's Blog</a></div>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <nav>
+        <a href="/">Home</a>
+        <a href="/posts">Posts</a>
+        <a href="/feed.xml">RSS</a>
+    </nav>
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+</header>
+  
+
+  <div class="content">
+    <div class="content-page">
+    
+  <div class="code-languages">
+    
+    <div class="code-language">C#</div>
+    
+    <div class="code-language">haskell</div>
+    
+  </div>
+  <h1>C# can be functional pt1: The Maybe Monad</h1>
+  
+    <h2>Functional Programming? That's like map right?</h2>
+    <p>
+    The fact that people start reading blog posts about functional programming
+    can nowadays no longer solely be attributed to being an enthusiastic type-theorist.
+    Transformations like map, filter, or even reduce have found their way into many
+    well known programming languages like python, javascript, C# or even C++. Look at the
+    examples below showing how to increment every element in a list and filter out
+    only the even numbers. <i>oneMore</i> will always be [2,3,4,5,6] and <i>even</i> [2,4].
+    </p>
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="kd">const</span><span class="w"> </span><span class="nx">input</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="mf">1</span><span class="p">,</span><span class="mf">2</span><span class="p">,</span><span class="mf">3</span><span class="p">,</span><span class="mf">4</span><span class="p">,</span><span class="mf">5</span><span class="p">];</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">oneMore</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">input</span><span class="p">.</span><span class="nx">map</span><span class="p">(</span><span class="nx">x</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">x</span><span class="o">+</span><span class="mf">1</span><span class="p">);</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">even</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">input</span><span class="p">.</span><span class="nx">filter</span><span class="p">(</span><span class="nx">x</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">x</span><span class="o">%</span><span class="mf">2</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mf">0</span><span class="p">);</span>
+</pre></div>
+
+</p>
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="nb">input</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span><span class="p">]</span>
+<span class="c1"># we use list() to force evaluation since map and</span>
+<span class="c1"># filter return generators.</span>
+<span class="n">oneMore</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="nb">input</span><span class="p">))</span>
+<span class="n">even</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">%</span><span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="nb">input</span><span class="p">))</span>
+<span class="c1"># Can also be done with list comprehensions</span>
+<span class="n">oneMore</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">+</span><span class="mi">1</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">input</span><span class="p">]</span>
+<span class="n">even</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">input</span> <span class="k">if</span> <span class="n">x</span><span class="o">%</span><span class="mi">2</span><span class="o">==</span><span class="mi">0</span><span class="p">]</span>
+<span class="c1"># Notice how you could do map and filter</span>
+<span class="c1"># in one list comprehension?</span>
+</pre></div>
+
+</p>
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="c1">// Yes SQL is actually a simple functional language!</span>
+<span class="k">using</span><span class="w"> </span><span class="nn">System.Linq</span><span class="p">;</span>
+<span class="kt">var</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">List</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="p">}</span>
+<span class="kt">var</span><span class="w"> </span><span class="n">oneMore</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">input</span><span class="p">.</span><span class="n">Select</span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">x</span><span class="o">+</span><span class="mi">1</span><span class="p">);</span>
+<span class="kt">var</span><span class="w"> </span><span class="n">even</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">input</span><span class="p">.</span><span class="n">Where</span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">x</span><span class="o">%</span><span class="mi">2</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
+<span class="c1">// Do note that oneMore and even are both</span>
+<span class="c1">// of type IEnumerable&lt;int&gt; are in fact</span>
+<span class="c1">// lazy loaded. </span>
+</pre></div>
+
+</p>
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;vector&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;algorithm&gt;</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span><span class="p">};</span>
+<span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">oneMore</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">5</span><span class="p">);</span>
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">transform</span><span class="p">(</span>
+<span class="w">      </span><span class="n">input</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span><span class="w"> </span><span class="c1">// First element</span>
+<span class="w">      </span><span class="n">input</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span><span class="w">   </span><span class="c1">// Last element</span>
+<span class="w">      </span><span class="n">oneMore</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span><span class="w">  </span><span class="c1">// First element of destination</span>
+<span class="w">      </span><span class="p">[](</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="p">){</span><span class="k">return</span><span class="w"> </span><span class="n">x</span><span class="o">+</span><span class="mi">1</span><span class="p">;});</span>
+
+<span class="w">  </span><span class="c1">// Notice how we had to guess that</span>
+<span class="w">  </span><span class="c1">// the result had 2 elements?</span>
+<span class="w">  </span><span class="k">auto</span><span class="w"> </span><span class="n">even</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">vector</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">2</span><span class="p">);</span>
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">transform</span><span class="p">(</span>
+<span class="w">      </span><span class="n">input</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span>
+<span class="w">      </span><span class="n">input</span><span class="p">.</span><span class="n">end</span><span class="p">(),</span>
+<span class="w">      </span><span class="n">even</span><span class="p">.</span><span class="n">begin</span><span class="p">(),</span>
+<span class="w">      </span><span class="p">[](</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="p">){</span><span class="k">return</span><span class="w"> </span><span class="n">x</span><span class="o">%</span><span class="mi">2</span><span class="o">==</span><span class="mi">0</span><span class="p">;});</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="c1">--This syntax only works in the interpreter</span>
+<span class="nf">input</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="o">..</span><span class="mi">5</span><span class="p">]</span>
+<span class="nf">oneMore</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">map</span><span class="w"> </span><span class="p">(</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="n">input</span>
+<span class="nf">even</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">filter</span><span class="w"> </span><span class="p">(</span><span class="nf">\</span><span class="n">x</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">x</span><span class="o">%</span><span class="mi">2</span><span class="o">==</span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="n">input</span>
+</pre></div>
+
+</p>
+
+    <p>
+    But having witnessed the power of one the first truly functional languages: haskell,
+    I wonder: "Is this all we can learn from it?"
+    It has taken me many frustrating hour to finally grasp the concepts of 
+    Functors, Applicatives, and Monads. However, now that I do I find them 
+    so intuitive and useful, I miss them in my imperative world. 
+    Let's see if we can learn what they are whilst rebuilding them in C#.
+    </p>
+
+    <h2>Maybe: Security through insecurity</h2>
+    <p>
+    If you have ever written code you must have found yourself in situation were you
+    wrote a function that pretty much always worked but there were a few edge cases. "Oh
+    well lets just return None/null/.. and check for it later. I hope I don't have to
+    remind you how that story ends, and yes, always.
+    </p>
+
+    <p>
+    Alright, so what do we do when we can't always obtain an answer? What can we say
+    about the result? Imagine we have a function that converts the character of a digit to
+    the actual integer, so 0-9. A beginning Haskeller might find him or herself
+    with the following dilemma: what if it is not a character of a digit? Should we return
+    a standard value or throw an error. Perhaps leave a handy comment as well?
+    </p>
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="kr">import</span><span class="w"> </span><span class="nn">Data.Char</span>
+
+<span class="c1">--DON&#39;T PUT IN CHARACTERS THAT ARE NOT DIGITS THANK YOU PLEASE!</span>
+<span class="nf">toDigit</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Char</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Int</span>
+<span class="nf">toDigit</span><span class="w"> </span><span class="n">c</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">o</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">48</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">o</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">57</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">o</span><span class="o">-</span><span class="mi">48</span>
+<span class="w">  </span><span class="c1">--Do it like this?</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">otherwise</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="c1">-- Mmm, what about this:</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">otherwise</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="ne">error</span><span class="w"> </span><span class="s">&quot;Given char was not a digit&quot;</span>
+<span class="w">    </span><span class="kr">where</span><span class="w"> </span><span class="n">o</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span>
+<span class="w">          </span><span class="n">o</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">ord</span><span class="w"> </span><span class="n">c</span>
+</pre></div>
+
+</p>
+
+    <p>
+    I hope I don't have to tell you that this is not good. Nobody will read your handy
+    comments until the production server has crashed and nobody expected that such a 
+    simple function would ever throw an error. And if you were to return 0 you would
+    likely be held liable for the psychiatry expenses of the poor fella who on the seventh
+    day finally realised what was causing that damned damned bug.
+    </p>
+
+    <p>
+    Alright, so our function doesn't always work... How do we communicate that effectively
+    to our fellow programmers? Well, if we also communicate it through the compiler
+    they will know for sure; you can tell them directly but telling mommy is more effective.
+    Enter Maybe, our lord and saviour who is wisest for not knowing.
+    </p>
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="c1">--Put in whatever you want!</span>
+<span class="nf">toDigit</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Char</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Int</span>
+<span class="nf">toDigit</span><span class="w"> </span><span class="n">c</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">o</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">48</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">o</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">57</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">Just</span><span class="w"> </span><span class="p">(</span><span class="n">o</span><span class="o">-</span><span class="mi">48</span><span class="p">)</span>
+<span class="w">  </span><span class="o">|</span><span class="w"> </span><span class="n">otherwise</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">Nothing</span>
+<span class="w">    </span><span class="kr">where</span><span class="w"> </span><span class="n">o</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span>
+<span class="w">          </span><span class="n">o</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">ord</span><span class="w"> </span><span class="n">c</span>
+</pre></div>
+
+</p>
+
+    <p>
+    Okay, so our answer is wrapped in a Maybe, it is either Nothing or Just a value. But how
+    do we get rid of it again when we want to do something with it?
+    </p>
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="nf">toDigitPlusOne</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Char</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Int</span>
+<span class="nf">toDigitPlusOne</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">case</span><span class="w"> </span><span class="n">toDigit</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="kr">of</span>
+<span class="w">    </span><span class="kt">Nothing</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Nothing</span>
+<span class="w">    </span><span class="kt">Just</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Just</span><span class="w"> </span><span class="p">(</span><span class="n">x</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+
+</p>
+
+    <p>
+    Mmm, okay, but afterwards we stop it back in a Maybe. Does that mean we can never
+    really get rid of it? Well kinda, perhaps higher up in the program it can be a good
+    idea to choose functionality based on Nothing or Just, both leading to valid outcomes. 
+    In general however you will have to respect the fact that depending on a Maybe value, 
+    makes you a Maybe value. If you have seen a lot of <i>NullReferenceExceptions</i>
+    in your C# programs you must be excited to have the compiler tell you where you 
+    can prevent this. (Huray, C# 8 now has types that are non-nullable by default, 
+    to lose nullable types you have to check for null, just like Maybe! 
+    <a target=_blank href="https://docs.microsoft.com/en-us/dotnet/csharp/whats-new/csharp-8#nullable-reference-types">documentation</a>)
+    </p>
+
+    <p>
+    While C# 8 is a long way from being the standard, let's see if we can implement this
+    in the C# environment of today. First, let's have a look at how Maybe is defined in
+    haskell.
+    </p>
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="c1">--Maybe is a called a datatype, Nothing and Just are</span>
+<span class="c1">--called its instances. The &#39;a&#39; refers to the type</span>
+<span class="c1">--inside, which is not specified.</span>
+<span class="kr">data</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">Nothing</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kt">Just</span><span class="w"> </span><span class="n">a</span>
+</pre></div>
+
+</p>
+
+    We can actually translate this quite well to C#. We can attribute the same type
+    to Nothing and Just by letting them inherit from an abstract Maybe class. The generic
+    type idea is also well known in C#:
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="k">abstract</span><span class="w"> </span><span class="k">class</span><span class="w"> </span><span class="nc">Maybe</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span>
+<span class="p">{</span>
+<span class="p">}</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Nothing</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span>
+<span class="p">{</span>
+<span class="p">}</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Just</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="c1">// Making this property public is not at all</span>
+<span class="w">  </span><span class="c1">// a strange idea, if you can read the property means</span>
+<span class="w">  </span><span class="c1">// you have already asserted that you&#39;re al dealing</span>
+<span class="w">  </span><span class="c1">// with a just as opposed to a Nothing.</span>
+<span class="w">  </span><span class="k">public</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="n">Value</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">get</span><span class="p">;</span><span class="w"> </span><span class="k">set</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+
+<span class="w">  </span><span class="k">public</span><span class="w"> </span><span class="nf">Maybe</span><span class="p">(</span><span class="n">T</span><span class="w"> </span><span class="k">value</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="n">Value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">value</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Maybe.cs" target="_blank">full source</a></pre></div>
+</p>
+
+    In haskell, people have accustomed themselves to concept of pattern matching, 
+    basically a big if else if else chain to assert what we are dealing with:
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="nf">getDigitDescription</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Char</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">String</span>
+<span class="nf">getDigitDescription</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">case</span><span class="w"> </span><span class="n">toDigit</span><span class="w"> </span><span class="n">c</span><span class="w"> </span><span class="kr">of</span>
+<span class="w">    </span><span class="kt">Nothing</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="s">&quot;Given character is not a digit&quot;</span>
+<span class="w">    </span><span class="kt">Just</span><span class="w"> </span><span class="n">x</span><span class="w">  </span><span class="ow">-&gt;</span><span class="w"> </span><span class="s">&quot;Given character is the digit &quot;</span><span class="w"> </span><span class="o">++</span><span class="w"> </span><span class="n">show</span><span class="w"> </span><span class="n">x</span>
+</pre></div>
+
+</p>
+
+    Perhaps a bit less well known but this can be done pretty much verbatim in C# with
+    the age old switch statement:
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="nf">GetDigitDescription</span><span class="p">(</span><span class="kt">char</span><span class="w"> </span><span class="n">c</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">toDigit</span><span class="p">(</span><span class="n">c</span><span class="p">);</span>
+<span class="w">  </span><span class="k">switch</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="n">Nothing</span><span class="w"> </span><span class="n">n</span><span class="p">:</span><span class="w"> </span>
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;Given character is not a digit&quot;</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="n">Just</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">j</span><span class="p">:</span><span class="w"> </span>
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;Given character is the digit &quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">j</span><span class="p">.</span><span class="n">Value</span><span class="p">.</span><span class="n">toString</span><span class="p">();</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+
+    <h2>Maybe is so much more than that</h2>
+    <p>
+    This is the part where it gets really interesting and the use of complicated
+    words increase. We're going to attribute 3 titles to Maybe that we later will
+    learn are also attributed to many other Haskell datatypes:
+    </p>
+
+    <ul>
+      <li>Functor</li>
+      <li>Applicative</li>
+      <li>Monad</li>
+    </ul>
+
+    We will go into great detail about what these properties mean, why we care
+    and if we can reproduce them in C#.
+
+    <h2>1. Functor</h2>
+    You can already imagine that it will become quite cumbersome to constantly repeat
+    that switch statement all throughout the codebase to gain back information about
+    the result. This is were a functor can help you. Let me throw you in the deep
+    by giving three equivalent functions, the first without using functors, the
+    latter two with.
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="c1">-- Let&#39;s assume we have this function, it cannot </span>
+<span class="c1">-- answer if the second argument is 0 and therefore </span>
+<span class="c1">-- returns a Maybe value.</span>
+<span class="nf">isDivisbleBy</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Bool</span>
+
+<span class="nf">isNotDivisbleBy</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Bool</span>
+<span class="nf">isNotDivisbleBy</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">case</span><span class="w"> </span><span class="n">isDivisbleBy</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="kr">of</span>
+<span class="w">    </span><span class="kt">Nothing</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Nothing</span>
+<span class="w">    </span><span class="kt">Just</span><span class="w"> </span><span class="n">x</span><span class="w">  </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Just</span><span class="w"> </span><span class="p">(</span><span class="n">not</span><span class="w"> </span><span class="n">x</span><span class="p">)</span>
+
+<span class="nf">isNotDivisbleBy&#39;</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Bool</span>
+<span class="nf">isNotDivisbleBy&#39;</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">fmap</span><span class="w"> </span><span class="n">not</span><span class="w"> </span><span class="p">(</span><span class="n">isDivisbleBy</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span>
+
+<span class="nf">isNotDivisibleBy&#39;&#39;</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Bool</span>
+<span class="nf">isNotDivisibleBy&#39;&#39;</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">not</span><span class="w"> </span><span class="o">&lt;$&gt;</span><span class="w"> </span><span class="n">isDivisbleBy</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span>
+</pre></div>
+
+</p>
+
+    <p>
+    Alright, let's break it down. To be a Functor means nothing more than having
+    implemented the function <code>fmap</code> which can also be used as an operator under the
+    alias <code>&lt;$&gt;</code>, the only difference is the location of the arguments. Let's see
+    what fmap's type tells us:
+    </p>
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="nf">fmap</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Functor</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="ow">=&gt;</span><span class="w"> </span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">b</span>
+
+<span class="c1">-- Let&#39;s translate that to the Maybe Functor specificially</span>
+
+<span class="nf">fmap</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">b</span>
+</pre></div>
+
+</p>
+
+    So what fmap does is given a function from (a -> b) and a Maybe containing
+    an 'a', it returns a new Maybe containing a 'b' (Explaining haskell orally is
+    a tough experience). All it does is just wrap
+    that strenuous switch statement. It is nothing more than syntax sugar! We can
+    do this too in C#. Now it might seem obvious to implement this via inheritance 
+    and abstract methods, but I prefer to use extension methods, this will allow us
+    to explicitly pattern match, just like we do in haskell. In the future it will
+    also prove very useful for saving a lot of typing by having a catch clause if
+    the behavior is the same for many instances.
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">fmap</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">               </span><span class="k">this</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">maybe</span><span class="p">,</span><span class="w"> </span>
+<span class="w">               </span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">func</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">switch</span><span class="p">(</span><span class="n">maybe</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="n">Nothing</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">_</span><span class="p">:</span><span class="w"> </span>
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Nothing</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">();</span>
+<span class="w">    </span><span class="k">case</span><span class="w"> </span><span class="n">Just</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">just</span><span class="p">:</span><span class="w"> </span>
+<span class="w">      </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Just</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span><span class="n">func</span><span class="p">(</span><span class="n">just</span><span class="p">.</span><span class="n">Value</span><span class="p">));</span>
+<span class="w">    </span><span class="k">default</span><span class="p">:</span><span class="w"> </span>
+<span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="nf">Exception</span><span class="p">(</span><span class="s">&quot;Don&#39;t inherit from Maybe yourself!!!&quot;</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// Let&#39;s do it the other way around as well!</span>
+<span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">fmap</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">               </span><span class="k">this</span><span class="w"> </span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">func</span><span class="p">)</span>
+<span class="w">               </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">maybe</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">maybe</span><span class="p">.</span><span class="n">fmap</span><span class="p">(</span><span class="n">func</span><span class="p">);</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Maybe.cs" target="_blank">full source</a></pre></div>
+</p>
+
+    Now returning to our original function, we can do it like haskell:
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">void</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="kt">bool</span><span class="o">&gt;</span><span class="w"> </span><span class="n">IsNotDivisbleBy</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">b</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="o">!</span><span class="n">x</span><span class="p">).</span><span class="n">fmap</span><span class="p">(</span><span class="n">IsDivisbleBy</span><span class="p">(</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">b</span><span class="p">));</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+    <h2>2. Applicative</h2>
+    <p>
+    To be an applicative means, just like being a functor, nothing more that implementing
+    a function. In this case <code>liftA2</code>. A less general version, but much more commonly used is
+    the operator <code>&lt;*&gt;</code>. We will focus on <code>&lt;*&gt;</code> (called <code>ab</code>) for now.
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="p">(</span><span class="o">&lt;*&gt;</span><span class="p">)</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Applicative</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="ow">=&gt;</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">b</span>
+
+<span class="c1">--Again, let&#39;s translate that to specifically Maybe</span>
+
+<span class="p">(</span><span class="o">&lt;*&gt;</span><span class="p">)</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">b</span>
+</pre></div>
+
+</p>
+
+    This looks very familiar to fmap, the only difference is that the function is contained
+    in the Maybe. You might ask yourself why anyone would put that function inside a Maybe.
+    The reason for this is actually fmap. To understand how fmap does that we must first
+    understand haskell's notion of partially applied functions:
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="nf">plus</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Int</span>
+<span class="nf">plus</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">b</span>
+
+<span class="c1">-- Plus one is simply a weaker version of the more generic plus</span>
+<span class="nf">plusOne</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Int</span>
+<span class="nf">plusOne</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">plus</span><span class="w"> </span><span class="mi">1</span>
+
+<span class="c1">-- Giving a function it&#39;s non-last argument simply yields a </span>
+<span class="c1">-- new function with one argument less.</span>
+</pre></div>
+
+</p>
+
+    Now let's look back at fmap:
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="p">(</span><span class="o">&lt;$&gt;</span><span class="p">)</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">b</span>
+
+<span class="nf">plus</span><span class="w"> </span><span class="o">&lt;$&gt;</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">b</span>
+<span class="nf">plus</span><span class="w"> </span><span class="o">&lt;$&gt;</span><span class="w"> </span><span class="p">(</span><span class="kt">Just</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="p">(</span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Int</span><span class="p">)</span>
+
+<span class="c1">-- (a -&gt; b) means any a to any b. In our case:</span>
+<span class="c1">-- a :: Int</span>
+<span class="c1">-- b :: Int -&gt; Int (Just like with plusOne)</span>
+</pre></div>
+
+</p>
+    </p>
+
+    And that is how our function ends up inside a Maybe. But if now want to
+    supply the second argument to our function we cannot do that with fmap
+    anymore. This is where our Applicative property comes in handy.
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="p">(</span><span class="o">&lt;*&gt;</span><span class="p">)</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">b</span>
+
+<span class="nf">plus</span><span class="w"> </span><span class="o">&lt;$&gt;</span><span class="w"> </span><span class="kt">Just</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="p">(</span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Int</span><span class="p">)</span>
+
+<span class="c1">-- Do see the similarity? ^</span>
+
+<span class="nf">plus</span><span class="w"> </span><span class="o">&lt;$&gt;</span><span class="w"> </span><span class="kt">Just</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="kt">Just</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Int</span>
+</pre></div>
+
+</p>
+
+    After fmap'ing one Maybe argument into a normal function we can use
+    <*> to pipe in the other arguments. We now are able to perform what
+    are known as compositions!
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="nf">meh</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Int</span>
+
+<span class="nf">getTwoNumbers</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="p">(</span><span class="kt">Int</span><span class="p">,</span><span class="w"> </span><span class="kt">Int</span><span class="p">)</span>
+<span class="nf">getTwoNumbers</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="p">(,)</span><span class="w"> </span><span class="o">&lt;$&gt;</span><span class="w"> </span><span class="n">meh</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="n">meh</span><span class="w"> </span><span class="n">b</span>
+</pre></div>
+
+</p>
+
+    Let's see if we can do this in C#:
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">ab</span><span class="o">&lt;</span><span class="n">TArg</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">      </span><span class="k">this</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TArg</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">maybe</span><span class="p">,</span><span class="w"> </span>
+<span class="w">      </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">TArg</span><span class="o">&gt;</span><span class="w"> </span><span class="n">maybe_arg</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="n">maybe</span><span class="p">)</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="n">Nothing</span><span class="o">&lt;</span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TArg</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">_</span><span class="p">:</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Nothing</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">();</span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="n">Just</span><span class="o">&lt;</span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TArg</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">just</span><span class="p">:</span>
+<span class="w">            </span><span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="n">maybe_arg</span><span class="p">)</span>
+<span class="w">            </span><span class="p">{</span>
+<span class="w">                </span><span class="k">case</span><span class="w"> </span><span class="n">Nothing</span><span class="o">&lt;</span><span class="n">TArg</span><span class="o">&gt;</span><span class="w"> </span><span class="n">_</span><span class="p">:</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Nothing</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">();</span>
+<span class="w">                </span><span class="k">case</span><span class="w"> </span><span class="n">Just</span><span class="o">&lt;</span><span class="n">TArg</span><span class="o">&gt;</span><span class="w"> </span><span class="n">arg</span><span class="p">:</span>
+<span class="w">                    </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Just</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span><span class="n">just</span><span class="p">.</span><span class="n">Value</span><span class="p">(</span><span class="n">arg</span><span class="p">.</span><span class="n">Value</span><span class="p">));</span>
+<span class="w">                </span><span class="k">default</span><span class="p">:</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Exception</span><span class="p">(</span><span class="s">&quot;Do not derive from Maybe yourself!&quot;</span><span class="p">);</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="k">default</span><span class="p">:</span><span class="w"> </span><span class="k">throw</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Exception</span><span class="p">(</span><span class="s">&quot;Do not derive from Maybe yourself!&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Maybe.cs" target="_blank">full source</a></pre></div>
+</p>
+
+    Now to top it all off, the plus with composition function in C#!
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="k">class</span><span class="w"> </span><span class="nc">PlusDemo</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="c1">/// &lt;summary&gt;</span>
+<span class="w">    </span><span class="c1">/// Returns a nested function, this way we can apply</span>
+<span class="w">    </span><span class="c1">/// arguments one by one.</span>
+<span class="w">    </span><span class="c1">/// &lt;/summary&gt;</span>
+<span class="w">    </span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">Func</span><span class="o">&lt;</span><span class="kt">int</span><span class="p">,</span><span class="w"> </span><span class="n">Func</span><span class="o">&lt;</span><span class="kt">int</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">Plus</span><span class="p">()</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">y</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">SometimesValue</span><span class="p">()</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Just</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="mi">5</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">Demo</span><span class="p">()</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nf">Plus</span><span class="p">().</span><span class="n">fmap</span><span class="p">(</span><span class="n">SometimesValue</span><span class="p">()).</span><span class="n">ab</span><span class="p">(</span><span class="n">SometimesValue</span><span class="p">());</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Demos/MaybeDemo.cs" target="_blank">full source</a></pre></div>
+</p>
+
+
+    <h2>3. Monad</h2>
+    And for our grand finale... The most complicated thing in our known universe,
+    harder than quantum mechanics: Monads! Actually that's not true, just like Functor
+    and Applicative, to be a Monad just means having implemented a function, or 2 in this
+    case. Let's meet them:
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="p">(</span><span class="o">&gt;&gt;=</span><span class="p">)</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Monad</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="ow">=&gt;</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">b</span>
+<span class="p">(</span><span class="n">return</span><span class="p">)</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Monad</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="ow">=&gt;</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="n">a</span>
+<span class="nf">pure</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">return</span>
+
+<span class="c1">-- Again, specifically for Maybe</span>
+<span class="p">(</span><span class="o">&gt;&gt;=</span><span class="p">)</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">b</span>
+<span class="p">(</span><span class="n">return</span><span class="p">)</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="n">a</span>
+</pre></div>
+
+</p>
+
+    <p>
+    Now this is where it gets confusing for most people. First let's acknowledge the
+    fact that we have muddied the waters by using the word return. So let's be loud
+    and clear about the following:
+    </p>
+
+    <h3>return in haskell has absolutely nothing to do with the return in C#!!!</h3>
+
+    <p>
+    With the damage already done, I can also say that haskell has an operator named
+    'pure' which does exactly the same thing. In our C# implementation we will use
+    that word to make things less ambiguous. 
+    </p>
+
+    <p>
+    So this weird <code>&gt;&gt;=</code> operator, what does it do? First of all, that operator is called
+    bind and many would say is the most powerful operator in functional languages. What
+    it does is again not that complicated. Give it a function and it will decide for 
+    you whether it can actually execute it. This very similar to fmap except that the function
+    we provide already returns an instance of that same monad, i.e. Maybe. This allows
+    us to go in, evaluate the value and return a new instance of that monad.
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="nf">destroyIfEven</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Int</span>
+<span class="nf">destroyIfEven</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kr">case</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="kr">of</span>
+<span class="w">    </span><span class="kt">Nothing</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Nothing</span>
+<span class="w">    </span><span class="kt">Just</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kr">if</span><span class="w"> </span><span class="p">(</span><span class="n">even</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="kr">then</span><span class="w"> </span><span class="kt">Just</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="kr">else</span><span class="w"> </span><span class="kt">Nothing</span>
+
+<span class="c1">-- But now much shorter with bind!</span>
+
+<span class="nf">destroyIfEven&#39;</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Int</span>
+<span class="nf">destroyIfEven&#39;</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="nf">\</span><span class="n">x</span><span class="w"> </span><span class="ow">-&gt;</span>
+<span class="w">    </span><span class="kr">if</span><span class="w"> </span><span class="p">(</span><span class="n">even</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="kr">then</span><span class="w"> </span><span class="kt">Just</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="kr">else</span><span class="w"> </span><span class="kt">Nothing</span>
+</pre></div>
+
+</p>
+
+    Alright, that's all cool and dandy, but where does <code>pure</code> or <code>return</code> come in?
+    Well, just like its type signature reveals, it simply takes a normal value and
+    puts it in a monad. For <code>Maybe</code> that operation is not that hard to imagine...
+    We can just put it in a <code>Just</code>! And yes, that is what happens, <code>pure</code> for <code>Maybe</code> is
+    simply the <code>Just</code> constructor. We could have more generally written:
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="nf">destroyIfEven&#39;&#39;</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">Maybe</span><span class="w"> </span><span class="kt">Int</span>
+<span class="nf">destroyIfEven&#39;</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="nf">\</span><span class="n">x</span><span class="w"> </span><span class="ow">-&gt;</span>
+<span class="w">    </span><span class="kr">if</span><span class="w"> </span><span class="p">(</span><span class="n">even</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="kr">then</span><span class="w"> </span><span class="n">pure</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="kr">else</span><span class="w"> </span><span class="kt">Nothing</span>
+</pre></div>
+
+</p>
+    </p>
+
+    A keen reader may recognize that this is actually very similar to Promises in
+    javascript. And indeed that is very correct! In haskell we even have something
+    similar to callback hell. Luckily there is more syntax sugar for that, but that's for
+    another time. Let's do it in C#:
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">bind</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">    </span><span class="k">this</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">maybe</span><span class="p">,</span>
+<span class="w">    </span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">func</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="n">maybe</span><span class="p">)</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="n">Nothing</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">_</span><span class="p">:</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Nothing</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">();</span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="n">Just</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">just</span><span class="p">:</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">func</span><span class="p">(</span><span class="n">just</span><span class="p">.</span><span class="n">Value</span><span class="p">);</span>
+<span class="w">        </span><span class="k">default</span><span class="p">:</span><span class="w"> </span>
+<span class="w">          </span><span class="k">throw</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="nf">Exception</span><span class="p">(</span><span class="s">&quot;Do not derive from Maybe yourself!&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">pure</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="k">value</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Just</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="k">value</span><span class="p">);</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Maybe.cs" target="_blank">full source</a></pre></div>
+</p>
+
+    Now let's see what our 'destroyIfEven' were to look like:
+
+    <p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">Maybe</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">DestroyIfEven</span><span class="p">(</span><span class="n">Maybe</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">input</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">input</span><span class="p">.</span><span class="n">bind</span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span>
+<span class="w">        </span><span class="o">?</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Nothing</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">()</span><span class="w"> </span>
+<span class="w">        </span><span class="p">:</span><span class="w"> </span><span class="n">x</span><span class="p">.</span><span class="n">pure</span><span class="p">());</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Demos/MaybeDemo.cs" target="_blank">full source</a></pre></div>
+</p>
+
+    Pretty gnarly no? 
+
+    <h2>Functions are not methods</h2>
+    <p>
+    When OO programmers talk to each other, these words are often used interchangeably.
+    This is understandable because in languages as C# there is not really a clear cut
+    difference. You could argue that a function is something that depends only on it's
+    input: something that is known as pure function. But hey, are all functions then pure?
+    Then why was the word invented?
+    </p>
+
+    <p>
+    When people describe haskell they often say "Everything is function!". What they
+    mean is that there no such thing as statements. You cannot say: "Execute this function
+    right now." The only thing you can do is describe the transformation of objects.
+    For example the DestroyIfEven function describes a transformation to something else.
+    Whilst this all sounds very restrictive, it actually allows you to very intuitively
+    compose larger and larger transformations until you can do something very useful. The
+    great thing is that the compiler can help you way better with ensuring everything is
+    working, allowing to build far less error prone code. 
+    </p>
+
+    <h2>Summary and Conclusion</h2>
+    <p>
+    We looked at how we can port the concept of functions that may or may not succeed
+    to C#. We then looked at what other properties the Maybe has in haskell to see
+    if we can bring back more. As a result of that we now have a C# class that can arguably be
+    called an Applicative Functor, as well as a Monad.
+    </p>
+
+    <p>
+    Of course we haven't made C# adhere to the same guarantees that haskell gives us,
+    but I think it's interesting to see that are a lot more ingenious concepts to 
+    borrow from functional languages than is currently often done. 
+    </p>
+
+    <p>
+    Despite the success, the main purpose of this experiment was not to improve
+    C#, but to learn about Functors, Applicatives and Monads using tools we are already
+    familiar with. In part 2 we will be looking at how we can create a linked list in
+    C#, which is, just like Maybe, also an Applicative Functor and a Monad.
+    </p>
+                    
+
+
+
+
+    
+    <div id="gitalk-container"></div>
+<script>
+const gitalk = new Gitalk({
+  clientID: "a1da1553c3ddbf769a52",
+  clientSecret: "1ad095f6d5d87b7818859fa8184bd422fca65253",
+  repo: 'blog',      // The repository of store comments,
+  owner: 'HugoPeters1024',
+  admin: ['HugoPeters1024'],
+  id: "3",      // Ensure uniqueness and length less than 50
+  number: "3",
+  distractionFreeMode: false  // Facebook-like distraction free mode
+})
+
+gitalk.render('gitalk-container')
+</script>
+    
+  <div class="modified-at"> 
+    <small>last modified: May 29, 2026 at 11:08</small>
+  </div>
+
+
+    </div>
+  </div>
+
+  
+    <footer>
+    Hugo Peters &middot; hpeters1024@gmail.com &middot; running on a raspberry pi 3b+
+</footer>
+  
+
+</body>
+</html>

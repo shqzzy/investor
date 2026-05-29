@@ -1,0 +1,184 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:ns0="http://www.w3.org/2005/Atom" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+  <channel>
+    <title>Hugo's Blog</title>
+    <link>https://hugopeters.me</link>
+    <description>GPU programming, functional programming, and efficient code.</description>
+    <language>en</language>
+    <ns0:link href="https://hugopeters.me/feed.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 29 May 2026 10:51:26 +0000</lastBuildDate>
+    <item>
+      <title>My new post</title>
+      <link>https://hugopeters.me/posts/24</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/24</guid>
+      <pubDate>Fri, 29 May 2026 10:51:26 +0000</pubDate>
+      <description>I want to post my new post to look what's happpening</description>
+    </item>
+    <item>
+      <title>Monalis, stylized image compression with simulated annealing</title>
+      <link>https://hugopeters.me/posts/23</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/23</guid>
+      <pubDate>Fri, 13 Feb 2026 15:30:22 +0000</pubDate>
+      <description>Using webgpu compute shaders to run an highly optimized simulated annealing process to generate cool images</description>
+    </item>
+    <item>
+      <title>Wrestling with exponential compile times in GHC</title>
+      <link>https://hugopeters.me/posts/22</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/22</guid>
+      <pubDate>Sun, 09 Jun 2024 16:41:02 +0000</pubDate>
+      <description>How type families can easily generate exponetially large types and how to fix it.</description>
+    </item>
+    <item>
+      <title>Cracking the Cryptic (with Z3 and Rust)</title>
+      <link>https://hugopeters.me/posts/21</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/21</guid>
+      <pubDate>Sun, 28 Apr 2024 16:35:22 +0000</pubDate>
+      <description>Solving a crazy sudoku like puzzle using the Z3 bindings in Rust</description>
+    </item>
+    <item>
+      <title>MADS</title>
+      <link>https://hugopeters.me/posts/20</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/20</guid>
+      <pubDate>Sun, 09 Oct 2022 20:06:48 +0000</pubDate>
+      <description>Making a math search problem 5x as fast and then 1000x as fast</description>
+    </item>
+    <item>
+      <title>Voronoi shading the web</title>
+      <link>https://hugopeters.me/posts/19</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/19</guid>
+      <pubDate>Sun, 18 Sep 2022 17:08:40 +0000</pubDate>
+      <description>Creating a simple 2d shader with Rust and Bevy, and compiling it to the web
+</description>
+    </item>
+    <item>
+      <title>$ is the wrong way around (sometimes)</title>
+      <link>https://hugopeters.me/posts/18</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/18</guid>
+      <pubDate>Mon, 05 Sep 2022 19:22:12 +0000</pubDate>
+      <description>Reverse application in functional languages is underappreciated</description>
+    </item>
+    <item>
+      <title>3d normals are 2.0000001d</title>
+      <link>https://hugopeters.me/posts/17</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/17</guid>
+      <pubDate>Sun, 05 Jun 2022 22:51:27 +0000</pubDate>
+      <description>How to compress a 3d normal to 2 floats for faster raytracing</description>
+    </item>
+    <item>
+      <title>Statically Typed Lambda Calculus as an Embedded Language</title>
+      <link>https://hugopeters.me/posts/16</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/16</guid>
+      <pubDate>Mon, 31 Jan 2022 15:27:26 +0000</pubDate>
+      <description>Using type level programming to implement statically typed lambda calculus with strong correctness guarantees
+</description>
+    </item>
+    <item>
+      <title>Solving newspaper puzzles with SMT solvers</title>
+      <link>https://hugopeters.me/posts/15</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/15</guid>
+      <pubDate>Wed, 05 Jan 2022 11:12:48 +0000</pubDate>
+      <description>Letting Z3 do the heavy lifting to solve a frustrating puzzle</description>
+    </item>
+    <item>
+      <title>Higher Kinded Types in Rust</title>
+      <link>https://hugopeters.me/posts/14</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/14</guid>
+      <pubDate>Fri, 03 Dec 2021 21:54:06 +0000</pubDate>
+      <description>Learning a new language: Hello World, prime numbers, then monads</description>
+    </item>
+    <item>
+      <title>Demystifying the state monad</title>
+      <link>https://hugopeters.me/posts/13</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/13</guid>
+      <pubDate>Thu, 04 Nov 2021 16:49:30 +0000</pubDate>
+      <description>Rediscovering haskell's state monad from scratch</description>
+    </item>
+    <item>
+      <title>Functional in the wild: typeclasses</title>
+      <link>https://hugopeters.me/posts/12</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/12</guid>
+      <pubDate>Sat, 03 Jul 2021 00:31:18 +0000</pubDate>
+      <description>How C++ template can be (and are) used to create typclasses</description>
+    </item>
+    <item>
+      <title>Sudoku solving</title>
+      <link>https://hugopeters.me/posts/11</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/11</guid>
+      <pubDate>Sun, 04 Apr 2021 22:07:00 +0000</pubDate>
+      <description>Solving sudoku's with an ILP model</description>
+    </item>
+    <item>
+      <title>Who still uses ReaderT</title>
+      <link>https://hugopeters.me/posts/10</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/10</guid>
+      <pubDate>Thu, 18 Mar 2021 22:33:53 +0000</pubDate>
+      <description>How haskell's ImplicitParams extension could deprecate ReaderT</description>
+    </item>
+    <item>
+      <title>Shining light on a die</title>
+      <link>https://hugopeters.me/posts/9</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/9</guid>
+      <pubDate>Fri, 12 Mar 2021 21:12:31 +0000</pubDate>
+      <description>Pathtracing or how I learned to stop worrying and love the nested integral
+</description>
+    </item>
+    <item>
+      <title>The kernel is on fire</title>
+      <link>https://hugopeters.me/posts/8</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/8</guid>
+      <pubDate>Fri, 04 Sep 2020 23:03:03 +0000</pubDate>
+      <description>A full tutorial on making a fire effect using a kernel on the gpu</description>
+    </item>
+    <item>
+      <title>A Hacking Bootcamp</title>
+      <link>https://hugopeters.me/posts/7</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/7</guid>
+      <pubDate>Wed, 22 Jul 2020 21:09:25 +0000</pubDate>
+      <description>Challenge the Cyber bootcamp 2020, a first hand account</description>
+    </item>
+    <item>
+      <title>A Boomerang Proof</title>
+      <link>https://hugopeters.me/posts/6</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/6</guid>
+      <pubDate>Fri, 05 Jun 2020 14:43:14 +0000</pubDate>
+      <description>Solving and proofing a children's math puzzle</description>
+    </item>
+    <item>
+      <title>The fun of playing with shaders</title>
+      <link>https://hugopeters.me/posts/5</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/5</guid>
+      <pubDate>Tue, 05 May 2020 11:08:23 +0000</pubDate>
+      <description>Why leveraging the GPU to serve your imagination is utterly enjoyable</description>
+    </item>
+    <item>
+      <title>C# can be functional pt2: Lists are Monads</title>
+      <link>https://hugopeters.me/posts/4</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/4</guid>
+      <pubDate>Sat, 04 Jan 2020 18:59:02 +0000</pubDate>
+      <description>An experiment to see if a list can be implemented as a monad in C#</description>
+    </item>
+    <item>
+      <title>C# can be functional pt1: The Maybe Monad</title>
+      <link>https://hugopeters.me/posts/3</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/3</guid>
+      <pubDate>Sun, 15 Dec 2019 23:27:25 +0000</pubDate>
+      <description>Piping the power of haskell to the world of C#: Theorists' wet dream or awesome idea?</description>
+    </item>
+    <item>
+      <title>The Knight of Hamilton</title>
+      <link>https://hugopeters.me/posts/2</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/2</guid>
+      <pubDate>Mon, 02 Dec 2019 19:11:30 +0000</pubDate>
+      <description>An epic tale of a struggling knight, tasked with finding a 'Knight's Tour'
+</description>
+    </item>
+    <item>
+      <title>Making a blog website</title>
+      <link>https://hugopeters.me/posts/1</link>
+      <guid isPermaLink="true">https://hugopeters.me/posts/1</guid>
+      <pubDate>Fri, 01 Nov 2019 17:22:20 +0000</pubDate>
+      <description>Creating a static html blog managed with a python CLI
+</description>
+    </item>
+  </channel>
+</rss>

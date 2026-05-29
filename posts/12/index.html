@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+  <script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/public/pygments.css">
+  <link rel="stylesheet" type="text/css" href="/public/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  
+  
+  
+  <link rel="alternate" type="application/rss+xml" title="Hugo's Blog" href="/feed.xml">
+  <link rel="icon" href="/posts/12/favicon.svg">
+  <title>Functional in the wild: typeclasses</title>
+</head>
+<body>
+  
+
+  
+    <header>
+    <div class="logo"><a href="/">Hugo's Blog</a></div>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <nav>
+        <a href="/">Home</a>
+        <a href="/posts">Posts</a>
+        <a href="/feed.xml">RSS</a>
+    </nav>
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+</header>
+  
+
+  <div class="content">
+    <div class="content-page">
+    
+  <div class="code-languages">
+    
+    <div class="code-language">haskell</div>
+    
+    <div class="code-language">c#</div>
+    
+    <div class="code-language">c++</div>
+    
+  </div>
+  <h1>Functional in the wild: typeclasses</h1>
+  
+
+One thing that I always thought was great about Haskell, which bothered me in OO languages, is the idea of a typeclass. It allows you to implement a common interface for a myriad of types and then implicitly
+create higher order functions; after all, you don't pass the functions themselves, but they can be derived from the type the function is instantiated with. Let me give an example. A very common pattern in
+all languages is the ability to convert an object to its string representation. Haskell comes with a <code>Show</code> typeclass, that defines the common interface:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kr">class</span><span class="w"> </span><span class="kt">Show</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="kr">where</span>
+<span class="w">    </span><span class="n">show</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="kt">String</span>
+</pre></div>
+
+</p>
+
+if we then create for example a currency datatype, we can define the <code>show</code> function for all its constructors.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kr">data</span><span class="w"> </span><span class="kt">Currency</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">Euro</span><span class="w"> </span><span class="kt">Int</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kt">Dollar</span><span class="w"> </span><span class="kt">Int</span>
+
+<span class="kr">instance</span><span class="w"> </span><span class="kt">Show</span><span class="w"> </span><span class="kt">Currency</span><span class="w"> </span><span class="kr">where</span>
+<span class="w">    </span><span class="n">show</span><span class="w"> </span><span class="p">(</span><span class="kt">Euro</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="s">&quot;€&quot;</span><span class="w"> </span><span class="o">&lt;&gt;</span><span class="w"> </span><span class="n">show</span><span class="w"> </span><span class="n">x</span>
+<span class="w">    </span><span class="n">show</span><span class="w"> </span><span class="p">(</span><span class="kt">Dollar</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="s">&quot;$&quot;</span><span class="w"> </span><span class="o">&lt;&gt;</span><span class="w"> </span><span class="n">show</span><span class="w"> </span><span class="n">x</span>
+</pre></div>
+
+</p>
+
+<h3> The object oriented approach </h3>
+
+
+If you are familiar with C#, where the use of interfaces is very much a core principle of the language, we could create an interface like the following:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">interface</span><span class="w"> </span><span class="n">IShow</span><span class="w"> </span>
+<span class="p">{</span>
+<span class="w">    </span><span class="kt">string</span><span class="w"> </span><span class="nf">Show</span><span class="p">();</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+And then inherit from that interface in our specific currency classes:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">Euro</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">IShow</span><span class="w"> </span>
+<span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="p">;</span>
+<span class="w">    </span><span class="k">override</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="nf">Show</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// Not an ideal example since toString already exists, but oh well.</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;€&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">x</span><span class="p">.</span><span class="n">toString</span><span class="p">()</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">Dollar</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">IShow</span><span class="w"> </span>
+<span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="p">;</span>
+<span class="w">    </span><span class="k">override</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="nf">Show</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;$&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">x</span><span class="p">.</span><span class="n">toString</span><span class="p">()</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+For C# this is a fairly canonical and reasonable approach. But when we transition to C++, we have a better alternative.
+
+<h3> c++ means you care about performance </h3>
+
+<p>
+    It's the main selling point of the language: it can be fast. C++ also does not have interfaces. However, because multiple inheritance is allowed we could quite
+    easily do the same as in C#, but there is a big drawback: virtual functions. Virtual functions can incur a costly performance overhead; there will need to be a
+    runtime lookup into the vtable to see what function has been implemented for this specific type. This also means that the compiler cannot inline the function call,
+    which is an essential optimization.
+</p>
+
+<p>
+    This same problem may exist in C# but it is unlikely that performance will be high on your priority list. If that were the case, you should have started with c++
+    from the start anyway. So, how can we do better than virtual functions? Templating!
+</p>
+
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">template</span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span><span class="w">                                                            </span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">show_class</span><span class="w"> </span><span class="p">{</span><span class="w">                                                             </span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="nf">operator</span><span class="p">()</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">T</span><span class="o">&amp;</span><span class="w"> </span><span class="n">obj</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="p">;</span><span class="w">                                </span>
+<span class="p">};</span>
+<span class="w">                                                                                </span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">Euro</span><span class="w"> </span><span class="p">{</span><span class="w">                                                                   </span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="p">;</span><span class="w">                                                                      </span>
+<span class="p">};</span><span class="w">                                                                              </span>
+
+<span class="k">struct</span><span class="w"> </span><span class="nc">Dollar</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="p">;</span>
+<span class="p">};</span>
+<span class="w">                                                                                </span>
+<span class="k">template</span><span class="o">&lt;&gt;</span><span class="w">                                                                      </span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">show_class</span><span class="o">&lt;</span><span class="n">Euro</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span><span class="w">                                                       </span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="nf">operator</span><span class="p">()</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">Euro</span><span class="o">&amp;</span><span class="w"> </span><span class="n">obj</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w">                            </span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;€&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">obj</span><span class="p">.</span><span class="n">x</span><span class="p">);</span><span class="w">                                     </span>
+<span class="w">    </span><span class="p">}</span><span class="w">                                                                           </span>
+<span class="p">};</span>
+
+<span class="k">template</span><span class="o">&lt;&gt;</span><span class="w">                                                                      </span>
+<span class="k">struct</span><span class="w"> </span><span class="nc">show_class</span><span class="o">&lt;</span><span class="n">Dollar</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span><span class="w">                                                       </span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">string</span><span class="w"> </span><span class="nf">operator</span><span class="p">()</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">Dollar</span><span class="o">&amp;</span><span class="w"> </span><span class="n">obj</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w">                            </span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="s">&quot;€&quot;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">to_string</span><span class="p">(</span><span class="n">obj</span><span class="p">.</span><span class="n">x</span><span class="p">);</span><span class="w">                                     </span>
+<span class="w">    </span><span class="p">}</span><span class="w">                                                                           </span>
+<span class="p">};</span>
+</pre></div>
+
+</p>
+
+We can now call upon the typeclass in some polymorphic function:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">template</span><span class="o">&lt;</span><span class="k">typename</span><span class="w"> </span><span class="nc">T</span><span class="o">&gt;</span>
+<span class="kt">void</span><span class="w"> </span><span class="n">printToConsole</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">T</span><span class="o">&amp;</span><span class="w"> </span><span class="n">obj</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;%s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">show_class</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">()(</span><span class="n">obj</span><span class="p">).</span><span class="n">c_str</span><span class="p">());</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+Whenever we pass a T for which the typeclass is not implemented, we will get a compile time error. If the typeclass is implemented,
+compiler will know at compile time which function to use and is free to inline it. Invalid usage will unfortunately not always
+result in very readable error message:
+
+<p>
+    <div class="highlight"><pre><span></span>/usr/bin/ld:<span class="w"> </span>/tmp/ccPSfC80.o:<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="sb">`</span>void<span class="w"> </span>printToConsole&lt;int&gt;<span class="o">(</span>int<span class="w"> </span>const<span class="p">&amp;</span><span class="o">)</span><span class="s1">&#39;</span>
+<span class="s1">:                                                                               </span>
+<span class="s1">test.cpp:(.text._Z14printToConsoleIiEvRKT_[_Z14printToConsoleIiEvRKT_]+0x33): un</span>
+<span class="s1">defined reference to `show_class&lt;int&gt;::operator()[abi:cxx11](int const&amp;) const&#39;</span><span class="w"> </span>
+collect2:<span class="w"> </span>error:<span class="w"> </span>ld<span class="w"> </span>returned<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="nb">exit</span><span class="w"> </span>status
+</pre></div>
+
+</p>
+
+Especially annoying is the fact that language servers and IDE's will likely also not pickup on this problem. What they see is that the
+function generally does exist in the typeclass definition, and it'll only be the linker that realizes that the function is never implemented for any type.
+It seems however that there is experimental solutions for this in the pipeline: <a href="https://en.cppreference.com/w/cpp/experimental/is_detected">https://en.cppreference.com/w/cpp/experimental/is_detected</a>. 
+Although I myself was not skilled enough to get it working just yet.
+
+<h3>Cool hack, but I write professional software</h3>
+Great, this stuff is not a hack, this is actually being used, even in STL! If I want to create an <code>unordered_map</code> of say pairs, you will run into the problem that STL has not implemented a hash
+function for that type and will refuse it as a map key. However, there is a templated hash struct very similar to our <code>show_class</code> that we can specialize with a generic pair type to allow
+for this:
+
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">struct</span><span class="w"> </span><span class="nc">pair_hash</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">template</span><span class="o">&lt;</span><span class="k">class</span><span class="w"> </span><span class="nc">T1</span><span class="p">,</span><span class="w"> </span><span class="k">class</span><span class="w"> </span><span class="nc">T2</span><span class="o">&gt;</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="kt">size_t</span><span class="w"> </span><span class="k">operator</span><span class="p">()</span><span class="w"> </span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="n">T1</span><span class="p">,</span><span class="w"> </span><span class="n">T2</span><span class="o">&gt;</span><span class="w"> </span><span class="o">&amp;</span><span class="n">p</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">auto</span><span class="w"> </span><span class="n">h1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">hash</span><span class="o">&lt;</span><span class="n">T1</span><span class="o">&gt;</span><span class="p">()(</span><span class="n">p</span><span class="p">.</span><span class="n">first</span><span class="p">);</span>
+<span class="w">        </span><span class="k">auto</span><span class="w"> </span><span class="n">h2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">hash</span><span class="o">&lt;</span><span class="n">T1</span><span class="o">&gt;</span><span class="p">()(</span><span class="n">p</span><span class="p">.</span><span class="n">second</span><span class="p">);</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">h1</span><span class="w"> </span><span class="o">^</span><span class="w"> </span><span class="n">h2</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">};</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">argc</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="o">**</span><span class="w"> </span><span class="n">argv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="c1">// this is now allowed</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">unordered_map</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">pair</span><span class="o">&lt;</span><span class="kt">int</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="kt">int</span><span class="p">,</span><span class="w"> </span><span class="n">pair_hash</span><span class="o">&gt;</span><span class="w"> </span><span class="n">veryNiceMap</span><span class="p">;</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+Very professional friendly I'd say :)
+
+
+
+
+    
+    <div id="gitalk-container"></div>
+<script>
+const gitalk = new Gitalk({
+  clientID: "a1da1553c3ddbf769a52",
+  clientSecret: "1ad095f6d5d87b7818859fa8184bd422fca65253",
+  repo: 'blog',      // The repository of store comments,
+  owner: 'HugoPeters1024',
+  admin: ['HugoPeters1024'],
+  id: "12",      // Ensure uniqueness and length less than 50
+  number: "12",
+  distractionFreeMode: false  // Facebook-like distraction free mode
+})
+
+gitalk.render('gitalk-container')
+</script>
+    
+  <div class="modified-at"> 
+    <small>last modified: May 29, 2026 at 09:35</small>
+  </div>
+
+
+    </div>
+  </div>
+
+  
+    <footer>
+    Hugo Peters &middot; hpeters1024@gmail.com &middot; running on a raspberry pi 3b+
+</footer>
+  
+
+</body>
+</html>

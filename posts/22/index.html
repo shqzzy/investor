@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+  <script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/public/pygments.css">
+  <link rel="stylesheet" type="text/css" href="/public/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  
+  
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['\\(', '\\)']]
+  }
+};
+</script>
+<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-MML-AM_CHTML"> </script>
+
+  <link rel="alternate" type="application/rss+xml" title="Hugo's Blog" href="/feed.xml">
+  <link rel="icon" href="/posts/22/explosion.png">
+  <title>Wrestling with exponential compile times in GHC</title>
+</head>
+<body>
+  
+
+  
+    <header>
+    <div class="logo"><a href="/">Hugo's Blog</a></div>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <nav>
+        <a href="/">Home</a>
+        <a href="/posts">Posts</a>
+        <a href="/feed.xml">RSS</a>
+    </nav>
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+</header>
+  
+
+  <div class="content">
+    <div class="content-page">
+    
+  <div class="code-languages">
+    
+    <div class="code-language">haskell</div>
+    
+  </div>
+  <h1>Wrestling with exponential compile times in GHC</h1>
+  
+  <p>
+    For a recent project I found the need to partition a list of errors into
+    <b>user</b> and <b>server</b> errors... on the type level. This would allow me to properly
+    define a servant definition that is transparent about which errors are returned along with the
+    <code>400</code> HTTP status code, and which would be send as a <code>500</code>. This information can then be utilized
+    to automatically generate OpenAPI documentation, which is turning out to be an incredibly powerful
+    tool. It allows developers to easily and quickly test an endpoint, reviewers to spot any breaking
+    changes in the API, and other teams to do their thing without requiring much assistance.
+  </p>
+
+  <p>
+    Here is an impression of how the errors are defined:
+  </p>
+
+  <p>
+    <div class="highlight"><pre><span></span><span class="cm">{-# LANGUAGE DerivingStrategies #-}</span>
+
+<span class="kr">class</span><span class="w"> </span><span class="kt">IsError</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="kr">where</span>
+<span class="w">  </span><span class="kr">type</span><span class="w"> </span><span class="kt">IsUserError</span><span class="w"> </span><span class="n">err</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Bool</span>
+
+<span class="kr">newtype</span><span class="w"> </span><span class="kt">UserError</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">UserError</span><span class="w"> </span><span class="n">x</span>
+<span class="kr">instance</span><span class="w"> </span><span class="kt">IsError</span><span class="w"> </span><span class="p">(</span><span class="kt">UserError</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="kr">where</span>
+<span class="w">  </span><span class="kr">type</span><span class="w"> </span><span class="kt">IsUserError</span><span class="w"> </span><span class="p">(</span><span class="kt">UserError</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">True</span>
+
+<span class="kr">newtype</span><span class="w"> </span><span class="kt">ServerError</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">ServerError</span><span class="w"> </span><span class="n">x</span>
+<span class="kr">instance</span><span class="w"> </span><span class="kt">IsError</span><span class="w"> </span><span class="p">(</span><span class="kt">ServerError</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="kr">where</span>
+<span class="w">  </span><span class="kr">type</span><span class="w"> </span><span class="kt">IsError</span><span class="w"> </span><span class="p">(</span><span class="kt">ServerError</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">True</span>
+
+<span class="kr">data</span><span class="w"> </span><span class="kt">InvalidParameter</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">InvalidTimestamp</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kt">InvalidSortKey</span>
+<span class="w">  </span><span class="kr">deriving</span><span class="w"> </span><span class="kt">IsError</span><span class="w"> </span><span class="n">via</span><span class="w"> </span><span class="kt">UserError</span><span class="w"> </span><span class="kt">InvalidParameter</span>
+
+<span class="kr">data</span><span class="w"> </span><span class="kt">DatabaseError</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">UnparsableStoredObject</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="kt">UnkownDbError</span>
+<span class="w">  </span><span class="kr">deriving</span><span class="w"> </span><span class="kt">IsError</span><span class="w"> </span><span class="n">via</span><span class="w"> </span><span class="kt">ServerError</span><span class="w"> </span><span class="kt">DatabaseError</span>
+</pre></div>
+
+</p>
+
+  <p>
+    With that we can create a special servant http verb that can be transparent about the errors it can throw.
+    Moreover, by employing a type family we can distinguish between user and server errors and choose a more
+    appropriate http return code.
+  </p>
+
+  <p>
+    <div class="highlight"><pre><span></span><span class="cm">{-# LANGUAGE DataKinds #-}</span>
+<span class="cm">{-# LANGUAGE TypeFamilies #-}</span>
+
+<span class="kr">import</span><span class="w"> </span><span class="k">qualified</span><span class="w"> </span><span class="nn">Servant.API</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Servant</span>
+
+<span class="kr">type</span><span class="w"> </span><span class="kr">family</span><span class="w"> </span><span class="kt">FilterUserErrors</span><span class="w"> </span><span class="p">(</span><span class="n">errs</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">[</span><span class="kt">Type</span><span class="p">])</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">[</span><span class="kt">Type</span><span class="p">]</span><span class="w"> </span><span class="kr">where</span>
+<span class="w">  </span><span class="kt">FilterUserErrors</span><span class="w"> </span><span class="kt">&#39;[]</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">&#39;[]</span>
+<span class="w">  </span><span class="kt">FilterUserErrors</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="w"> </span><span class="kt">&#39;:</span><span class="w"> </span><span class="n">es</span><span class="p">)</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">If</span><span class="w"> </span><span class="p">(</span><span class="kt">IsUserError</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="w"> </span><span class="kt">&#39;:</span><span class="w"> </span><span class="kt">FilterUserErrors</span><span class="w"> </span><span class="n">es</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="kt">FilterUserErrors</span><span class="w"> </span><span class="n">es</span><span class="p">)</span>
+
+<span class="kr">type</span><span class="w"> </span><span class="kr">family</span><span class="w"> </span><span class="kt">FilterServerErrors</span><span class="w"> </span><span class="p">(</span><span class="n">errs</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">[</span><span class="kt">Type</span><span class="p">])</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">[</span><span class="kt">Type</span><span class="p">]</span><span class="w"> </span><span class="kr">where</span>
+<span class="w">  </span><span class="kt">FilterServerErrors</span><span class="w"> </span><span class="kt">&#39;[]</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">&#39;[]</span>
+<span class="w">  </span><span class="kt">FilterServerErrors</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="w"> </span><span class="kt">&#39;:</span><span class="w"> </span><span class="n">es</span><span class="p">)</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">If</span><span class="w"> </span><span class="p">(</span><span class="kt">IsUserError</span><span class="w"> </span><span class="n">e</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="kt">FilterServerErrors</span><span class="w"> </span><span class="n">es</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="n">e</span><span class="w"> </span><span class="kt">&#39;:</span><span class="w"> </span><span class="kt">FilterServerErrors</span><span class="w"> </span><span class="n">es</span><span class="p">)</span>
+
+<span class="kr">type</span><span class="w"> </span><span class="kt">VerbWithErrors</span><span class="w"> </span><span class="n">method</span><span class="w"> </span><span class="n">contentTypes</span><span class="w"> </span><span class="n">errs</span><span class="w"> </span><span class="n">res</span><span class="w"> </span><span class="ow">=</span>
+<span class="w">  </span><span class="kt">UVerb</span>
+<span class="w">    </span><span class="n">method</span>
+<span class="w">    </span><span class="n">contentTypes</span>
+<span class="w">    </span><span class="kt">&#39;[ WithStatus 200 res</span>
+<span class="kt">     , WithStatus 400 (Servant.Union (FilterUserErrors errs))</span>
+<span class="kt">     , WithStatus 500 (Servant.Union (FilterServerErrors errs))</span>
+<span class="kt">     ]</span>
+</pre></div>
+
+</p>
+
+  <p>
+    And this worked splendidly! Or at least for a while. Because as the application grew, we very abruptly ran
+    in the problem of unreasonably slow compile time after going from 11 to 13 errors.
+    The server module now took 3 minutes to compile!
+  </p>
+
+  <p>
+    You might expect that the type checker would be given a lot of extra work with this approach and would be the reason
+    for the slowdown, but this is actually not case.
+    With the help of <a href='https://github.com/codedownio/time-ghc-modules'>time-ghc-modules</a> I was able to identify
+    GHC's simplifier as the source of the slowdown.
+    Not really expecting to learn much from it, I compiled with the <code>-ddump-simpl</code> flag to be able to inspect the Core representation
+    at each stage of the simplifier. But without even looking at it, I could see something was off: the pretty printed Core was gigabytes
+    in size! All the while the server module was only a couple hundred lines of code.
+    Glancing at the Core identified the suspect: A LOT of typelevel occurances of the <code>If</code> constructor.
+  </p>
+
+  <p>
+    The issue is that <code>If</code> is just a constructor and is not actually being reduced by the compiler. As a result, both
+    recursive calls to the filter are expanded and an exponential size type level term is created! To be precise, \(2 ^ n\).
+    To resolve this, we need to reformulate the type family to only have 1 recursive call.
+    It might seem obvious when I give you the answer, but I can assure you that I would not have been able to crack the case
+    without the help of <a href='https://andres-loeh.de/'>Andres Löh</a> at Zurihac 2024.
+  </p>
+
+  <p>
+    <div class="highlight"><pre><span></span><span class="kr">type</span><span class="w"> </span><span class="kr">family</span><span class="w"> </span><span class="kt">FilterUserErrors</span><span class="w"> </span><span class="p">(</span><span class="n">xs</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">[</span><span class="kt">Type</span><span class="p">])</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">[</span><span class="kt">Type</span><span class="p">]</span><span class="w"> </span><span class="kr">where</span>
+<span class="w">  </span><span class="kt">FilterUserErrors</span><span class="w"> </span><span class="kt">&#39;[]</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">&#39;[]</span>
+<span class="w">  </span><span class="kt">FilterUserErrors</span><span class="w"> </span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="kt">&#39;:</span><span class="w"> </span><span class="n">xs</span><span class="p">)</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">ConditionalCons</span><span class="w"> </span><span class="p">(</span><span class="kt">IsUserError</span><span class="w"> </span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="p">(</span><span class="kt">FilterUserErrors</span><span class="w"> </span><span class="n">xs</span><span class="p">)</span>
+
+<span class="kr">type</span><span class="w"> </span><span class="kr">family</span><span class="w"> </span><span class="kt">FilterServerErrors</span><span class="w"> </span><span class="p">(</span><span class="n">xs</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">[</span><span class="kt">Type</span><span class="p">])</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">[</span><span class="kt">Type</span><span class="p">]</span><span class="w"> </span><span class="kr">where</span>
+<span class="w">  </span><span class="kt">FilterServerErrors</span><span class="w"> </span><span class="kt">&#39;[]</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">&#39;[]</span>
+<span class="w">  </span><span class="kt">FilterServerErrors</span><span class="w"> </span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="kt">&#39;:</span><span class="w"> </span><span class="n">xs</span><span class="p">)</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="kt">ConditionalCons</span><span class="w"> </span><span class="p">(</span><span class="kt">Not</span><span class="w"> </span><span class="p">(</span><span class="kt">IsUserError</span><span class="w"> </span><span class="n">x</span><span class="p">))</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="p">(</span><span class="kt">FilterServerErrors</span><span class="w"> </span><span class="n">xs</span><span class="p">)</span>
+
+<span class="kr">type</span><span class="w"> </span><span class="kr">family</span><span class="w"> </span><span class="kt">ConditionalCons</span><span class="w"> </span><span class="p">(</span><span class="n">b</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Bool</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Type</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="n">xs</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">[</span><span class="kt">Type</span><span class="p">])</span><span class="w"> </span><span class="kr">where</span>
+<span class="w">  </span><span class="kt">ConditionalCons</span><span class="w"> </span><span class="kt">True</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">xs</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="kt">:</span><span class="w"> </span><span class="n">xs</span>
+<span class="w">  </span><span class="kt">ConditionalCons</span><span class="w"> </span><span class="kt">False</span><span class="w"> </span><span class="kr">_</span><span class="w"> </span><span class="n">xs</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">xs</span>
+</pre></div>
+
+</p>
+
+  With this very subtle redefinition the compile time of the server modules was reduced from 3 minutes to 4 seconds!
+  Developing is fun once more!
+
+
+
+    
+    <div id="gitalk-container"></div>
+<script>
+const gitalk = new Gitalk({
+  clientID: "a1da1553c3ddbf769a52",
+  clientSecret: "1ad095f6d5d87b7818859fa8184bd422fca65253",
+  repo: 'blog',      // The repository of store comments,
+  owner: 'HugoPeters1024',
+  admin: ['HugoPeters1024'],
+  id: "22",      // Ensure uniqueness and length less than 50
+  number: "22",
+  distractionFreeMode: false  // Facebook-like distraction free mode
+})
+
+gitalk.render('gitalk-container')
+</script>
+    
+  <div class="modified-at"> 
+    <small>last modified: May 29, 2026 at 11:08</small>
+  </div>
+
+
+    </div>
+  </div>
+
+  
+    <footer>
+    Hugo Peters &middot; hpeters1024@gmail.com &middot; running on a raspberry pi 3b+
+</footer>
+  
+
+</body>
+</html>

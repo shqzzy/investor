@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+  <script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/public/pygments.css">
+  <link rel="stylesheet" type="text/css" href="/public/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  
+  
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['\\(', '\\)']]
+  }
+};
+</script>
+<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-MML-AM_CHTML"> </script>
+
+  <link rel="alternate" type="application/rss+xml" title="Hugo's Blog" href="/feed.xml">
+  <link rel="icon" href="/posts/8/icon.png">
+  <title>The kernel is on fire</title>
+</head>
+<body>
+  
+
+  
+    <header>
+    <div class="logo"><a href="/">Hugo's Blog</a></div>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <nav>
+        <a href="/">Home</a>
+        <a href="/posts">Posts</a>
+        <a href="/feed.xml">RSS</a>
+    </nav>
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+</header>
+  
+
+  <div class="content">
+    <div class="content-page">
+    
+  <div class="code-languages">
+    
+    <div class="code-language">c++</div>
+    
+    <div class="code-language">glsl</div>
+    
+  </div>
+  <h1>The kernel is on fire</h1>
+  
+
+<img src="endresult-opt.gif" width:100% max-width=640px/>
+
+<p>
+  The Rolling Stones have a lyric that reads: <i>Don't play with me, cause you're playing with fire</i>.
+  Now that may be a great song but that line laughably implies that playing with fire is an activity
+  that ought to repel someone. So, today I will take you with on an extensive tutorial that teaches you how to
+  create a fire effect by iterating an image processing kernel that runs on the gpu using OpenGL
+  compute shaders. Running massively parallel programs like this on the gpu allows us to leverage its multithreaded
+  nature and get increased performance. 
+</p>
+
+<p>
+  Traditionally, GPGPU (general purpose graphics processing unit) applications were reserved for sdk's like CUDA and
+  OpenCL. However, OpenGL has jumped the boat a few years ago and now allows us to do most of the things CUDA and OpenCL
+  offer natively, albeit with a bit less control. This is especially attractive for graphical demo's such as this
+  because it means that we already have OpenGL as a dependency and don't need anything extra. Furthermore, resource
+  sharing between these different platforms is pretty tough and in some cases can be slow. That is why we are going
+  to take this unconventional, yet very convenient approach.
+</p>
+
+<p>
+  Finally, we are going to use a lot of OpenGL features which I will try to explain in detail as we come across them, so you
+  should be able to follow along even if you are not terribly experienced. However, there is too much to cover everything. So
+  if during this post you wanna know a little bit more about what is going on I suggest you consult the 
+  <a href="https://www.khronos.org/registry/OpenGL-Refpages/gl4/" target=_blank>Open GL 4.5 Reference Pages</a>.
+</p>
+
+<p>
+  Before we start I must come clean and say the idea underlying this effect is mostly not my original work. It is based
+  on a video by the <a href="https://www.youtube.com/watch?v=X0kjv0MozuY" target=_blank>Coding Train</a> who in turn used
+  a very old <a href="https://web.archive.org/web/20160418004150/http://freespace.virgin.net/hugo.elias/models/m_fire.htm"
+                target = _blank>blog post</a> by Hugo Elias.
+</p>
+
+
+<h2>1. Creating a c++ project and linking OpenGL</h2>
+<p>
+  Before we can start programming we have to setup a compilation pipeline that collects all of the dependencies.
+  In this case that list of dependencies is limited to only one item: <a href="https://www.glfw.org/" target="_blank">GLFW</a>: an
+  OpenGL library that takes care of window management in a cross platform fashion. How to install or compile it has been
+  beautifully laid out on their own website. If you are using ubuntu you can probably get away with just the following:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span>$<span class="w"> </span>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libglfw3<span class="w"> </span>libglfw3-dev
+</pre></div>
+
+</p>
+
+Now to compile the project we are going to use cmake, which is also available in apt. For simplicity we are going
+to use only a single source file, making the cmake config rather simple. Put the following snippet in a file called <code>CMakeLists.txt</code>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c"># Ensure we are using a recent version</span>
+<span class="nb">cmake_minimum_required</span><span class="p">(</span><span class="s">VERSION</span><span class="w"> </span><span class="s">3.16</span><span class="p">)</span>
+
+<span class="c"># define a name for the project</span>
+<span class="nb">project</span><span class="p">(</span><span class="s">fire</span><span class="p">)</span>
+
+<span class="c"># make it possible to debug</span>
+<span class="nb">set</span><span class="p">(</span><span class="s">CMAKE_BUILD_TYPE</span><span class="w"> </span><span class="s">Debug</span><span class="p">)</span>
+<span class="nb">set</span><span class="p">(</span><span class="s">CMAKE_CXX_FLAGS,</span><span class="w"> </span><span class="s2">&quot;${CMAKE_CXX_FLAGS} -O0 -g&quot;</span><span class="p">)</span>
+<span class="nb">set</span><span class="p">(</span><span class="s">CMAKE_CXX_STANDARD</span><span class="w"> </span><span class="s">14</span><span class="p">)</span>
+
+<span class="c"># link the source file to the project</span>
+<span class="nb">add_executable</span><span class="p">(</span><span class="s">fire</span><span class="w"> </span><span class="s">main.cpp</span><span class="p">)</span>
+
+<span class="c"># locate the latest version of glfw</span>
+<span class="nb">find_package</span><span class="p">(</span><span class="s">glfw3</span><span class="w"> </span><span class="s">3.3.2</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
+
+<span class="c"># link it to the project</span>
+<span class="nb">target_link_libraries</span><span class="p">(</span><span class="s">fire</span><span class="w"> </span><span class="s">glfw</span><span class="p">)</span>
+
+<span class="c"># find OpenGL</span>
+<span class="nb">find_package</span><span class="p">(</span><span class="s">OpenGL</span><span class="w"> </span><span class="s">REQUIRED</span><span class="p">)</span>
+<span class="c"># These variables have been set by the previous command</span>
+<span class="nb">target_include_directories</span><span class="p">(</span><span class="s">fire</span><span class="w"> </span><span class="s">PUBLIC</span><span class="w"> </span><span class="o">${</span><span class="nv">OPENGL_INCLUDE_DIR</span><span class="o">}</span><span class="p">)</span>
+<span class="nb">target_link_libraries</span><span class="p">(</span><span class="s">fire</span><span class="w"> </span><span class="o">${</span><span class="nv">OPENGL_LIBRARIES</span><span class="o">}</span><span class="p">)</span>
+</pre></div>
+
+</p>
+
+<p>
+  Now let's setup a minimal <code>main.cpp</code> to test the compilation pipeline:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1">// These are required to enable some GLFW features</span>
+<span class="cp">#define GL_GLEXT_PROTOTYPES 1</span>
+<span class="cp">#define GL3_PROTOTYPES      1</span>
+
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;GLFW/glfw3.h&gt;</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">argc</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="o">**</span><span class="w"> </span><span class="n">argv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<p>
+  The project directory should now look like this:
+
+  <p>
+    <div class="highlight"><pre><span></span>.
+├──<span class="w"> </span>CMakeLists.txt
+└──<span class="w"> </span>main.cpp
+</pre></div>
+
+</p>
+</p>
+
+From this point on we can run the following commands to compile and run:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1"># Only needed the first time, will initialize cmake</span>
+$<span class="w"> </span>cmake<span class="w"> </span>.
+
+<span class="c1"># To build the executable</span>
+$<span class="w"> </span>cmake<span class="w"> </span>--build<span class="w"> </span>.
+
+<span class="c1"># To run the executable</span>
+$<span class="w"> </span>./fire
+</pre></div>
+
+</p>
+
+<h2>2. Opening a window</h2>
+<p>
+Before one can start any OpenGL program, an OpenGL context must be created. In this case
+glfw does that for us whenever we create a window. However, this does require some code to
+setup, and even more code to keep a window open:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="nf">error_callback</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">error</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">description</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Error: %s</span><span class="se">\n</span><span class="s">&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">description</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">argc</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="o">**</span><span class="w"> </span><span class="n">argv</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">glfwInit</span><span class="p">())</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-2</span><span class="p">;</span>
+
+<span class="w">    </span><span class="n">glfwSetErrorCallback</span><span class="p">(</span><span class="n">error_callback</span><span class="p">);</span>
+<span class="w">    </span><span class="n">glEnable</span><span class="p">(</span><span class="n">GL_DEBUG_OUTPUT</span><span class="p">);</span>
+<span class="w">    </span><span class="n">glEnable</span><span class="p">(</span><span class="n">GL_DEBUG_OUTPUT_SYNCHRONOUS</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// Force the latest version of OpenGL</span>
+<span class="w">    </span><span class="c1">// 4.6 might not be supported by your driver yet, </span>
+<span class="w">    </span><span class="c1">// so try updating first. If that not works try </span>
+<span class="w">    </span><span class="c1">// lower versions, this tutorial should work for 4.3 and above</span>
+<span class="w">    </span><span class="n">glfwWindowHint</span><span class="p">(</span><span class="n">GLFW_CONTEXT_VERSION_MAJOR</span><span class="p">,</span><span class="w"> </span><span class="mi">4</span><span class="p">);</span>
+<span class="w">    </span><span class="n">glfwWindowHint</span><span class="p">(</span><span class="n">GLFW_CONTEXT_VERSION_MINOR</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="p">);</span>
+
+
+<span class="w">    </span><span class="c1">// Create the actual window</span>
+<span class="w">    </span><span class="n">GLFWwindow</span><span class="o">*</span><span class="w"> </span><span class="n">window</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">glfwCreateWindow</span><span class="p">(</span><span class="n">WIDTH</span><span class="p">,</span><span class="w"> </span><span class="n">HEIGHT</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;fire&quot;</span><span class="p">,</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">,</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">window</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="mi">-3</span><span class="p">;</span>
+
+<span class="w">    </span><span class="c1">// Bind the context</span>
+<span class="w">    </span><span class="n">glfwMakeContextCurrent</span><span class="p">(</span><span class="n">window</span><span class="p">);</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">// We don&#39;t need depth, this is 2d application</span>
+<span class="w">    </span><span class="n">glDisable</span><span class="p">(</span><span class="n">GL_DEPTH_TEST</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// Enable vsync</span>
+<span class="w">    </span><span class="n">glfwSwapInterval</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// ANY SETUP CODE COMES HERE</span>
+
+<span class="w">    </span><span class="k">while</span><span class="p">(</span><span class="o">!</span><span class="n">glfwWindowShouldClose</span><span class="p">(</span><span class="n">window</span><span class="p">))</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// Clear the screen</span>
+<span class="w">        </span><span class="n">glClear</span><span class="p">(</span><span class="n">GL_COLOR_BUFFER_BIT</span><span class="p">);</span>
+
+<span class="w">        </span><span class="c1">// ANY RENDERING/LOOP CODE COMES HERE</span>
+
+<span class="w">        </span><span class="c1">// Process all input events (mouse and keyboard)</span>
+<span class="w">        </span><span class="n">glfwPollEvents</span><span class="p">();</span>
+
+<span class="w">        </span><span class="c1">// Signal OpenGL that we are done rendering</span>
+<span class="w">        </span><span class="n">glfwSwapBuffers</span><span class="p">(</span><span class="n">window</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="c1">// The window was closed, cleanup</span>
+<span class="w">    </span><span class="n">glfwDestroyWindow</span><span class="p">(</span><span class="n">window</span><span class="p">);</span>
+<span class="w">    </span><span class="n">glfwTerminate</span><span class="p">();</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+</pre></div>
+
+</p>
+
+<h2>3. Creating and displaying a texture</h2>
+
+<p>
+OpenGL is not terribly intuitive when it comes to quickly slapping something
+on the screen. Of course, we are going to leverage it's compute shader feature
+later, making it a very reasonable choice for this project. But that doesn't take
+away the fact that the following is going to seem unnecessarily complicated. But
+I ask you to bear with me here because ironically, the fire effect itself is far less complicated
+than this part.
+</p>
+
+<h3>3.1 Compiling a quad shader</h3>
+
+<p>
+To appreciate what exactly is going on you must first understand the basics of the shader
+pipeline. Most rendering situations require two kinds of shaders: a vertex shader followed
+by a fragment shader. As you may or may not know, rendering is all about triangles, whether
+the application is a 2d or a 3d one. When loading the application all the triangles are
+sent to the gpu. These triangles are nothing more than triple of vertices. A vertex shader
+can then be programmed to apply a transformation over all these vertices. When the position 
+of the vertices is decided OpenGL steps in and performs a set of calculations that project
+the triangles from 3d space onto the 2d screen. After that, a fragment shader gets called
+on every pixel on the screen that ought to be colored as part of this triangle. 
+</p>
+
+<p>
+Despite that being a very minimal and incomplete overview of the classical shader stages, it
+will suffice for now since we only require them in their most basic form. After all, we just
+want to draw a quad on the screen that does not move and color it with the generated image. So we
+add the following two definitions:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">quad_shader_vs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sa">R</span><span class="s">&quot;</span><span class="dl">(</span>
+<span class="s">#version 460</span>
+
+<span class="s">layout(location = 0) in vec2 vPos;</span>
+
+<span class="s">out vec2 uv;</span>
+
+<span class="s">void main()</span>
+<span class="s">{</span>
+<span class="s">    // We can simply copy the vertex x and y positions</span>
+<span class="s">    // straight to the output, using 0 for the 3rd dimension.</span>
+<span class="s">    // The fourth element is depth, convention gives it a value</span>
+<span class="s">    // of 1 if it is not used.</span>
+<span class="s">    gl_Position = vec4(vPos, 0, 1);</span>
+<span class="s">    </span>
+<span class="s">    // Texture coordinates range from [0,1] so we have to shift</span>
+<span class="s">    // the vertices a little to end up with the so called uv coords</span>
+<span class="s">    uv = (vPos + vec2(1)) * 0.5f;</span>
+<span class="s">}</span>
+<span class="dl">)</span><span class="s">&quot;</span><span class="p">;</span>
+
+<span class="k">static</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">quad_shader_fs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sa">R</span><span class="s">&quot;</span><span class="dl">(</span>
+<span class="s">#version 460</span>
+
+<span class="s">layout(location = 0) uniform sampler2D tex;</span>
+<span class="s">layout(location = 1) uniform float time;</span>
+<span class="s">in vec2 uv;</span>
+<span class="s">out vec4 color;</span>
+
+<span class="s">void main()</span>
+<span class="s">{</span>
+<span class="s">    color = texture(tex, uv);</span>
+<span class="s">}</span>
+<span class="dl">)</span><span class="s">&quot;</span><span class="p">;</span>
+</pre></div>
+
+</p>
+
+<p>
+  In the rest of this post I will refrain from showing the entire string.
+  That way I can show the code with its own syntax highlighting since shaders
+  are written in a language called glsl, not c++.
+</p>
+
+To actually use these programs we have to tell OpenGL to compile them for us
+after we have created the window (but before we enter the loop). To make this
+task a little easier you can use the following utility functions.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1">// Add these included at the top of the file</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;array&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;string&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;sstream&gt;</span>
+<span class="cp">#include</span><span class="w"> </span><span class="cpf">&lt;fstream&gt;</span>
+
+<span class="c1">// Add these methods somewhere above the main method</span>
+<span class="kr">inline</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">GLuint</span><span class="w"> </span><span class="nf">CompileShader</span><span class="p">(</span><span class="n">GLint</span><span class="w"> </span><span class="n">type</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="kt">char</span><span class="o">*</span><span class="w"> </span><span class="n">source</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="c1">// Preprocess macro&#39;s</span>
+<span class="w">  </span><span class="n">GLuint</span><span class="w"> </span><span class="n">shader</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">glCreateShader</span><span class="p">(</span><span class="n">type</span><span class="p">);</span>
+<span class="w">  </span><span class="n">glShaderSource</span><span class="p">(</span><span class="n">shader</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">source</span><span class="p">,</span><span class="w"> </span><span class="nb">NULL</span><span class="p">);</span>
+<span class="w">  </span><span class="n">glCompileShader</span><span class="p">(</span><span class="n">shader</span><span class="p">);</span>
+
+<span class="w">  </span><span class="c1">// Check the compilation of the shader </span>
+<span class="w">  </span><span class="n">GLint</span><span class="w"> </span><span class="n">success</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="n">glGetShaderiv</span><span class="p">(</span><span class="n">shader</span><span class="p">,</span><span class="w"> </span><span class="n">GL_COMPILE_STATUS</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">success</span><span class="p">);</span>
+
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">success</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">GL_FALSE</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="n">GLint</span><span class="w"> </span><span class="n">maxLength</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    </span><span class="n">glGetShaderiv</span><span class="p">(</span><span class="n">shader</span><span class="p">,</span><span class="w"> </span><span class="n">GL_INFO_LOG_LENGTH</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">maxLength</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">GLchar</span><span class="o">*</span><span class="w"> </span><span class="n">errorLog</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">GLchar</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="n">maxLength</span><span class="p">);</span>
+<span class="w">    </span><span class="n">glGetShaderInfoLog</span><span class="p">(</span><span class="n">shader</span><span class="p">,</span><span class="w"> </span><span class="n">maxLength</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">maxLength</span><span class="p">,</span><span class="w"> </span><span class="n">errorLog</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Error in shader: %s&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">errorLog</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">free</span><span class="p">(</span><span class="n">errorLog</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">shader</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="kr">inline</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">GLuint</span><span class="w"> </span><span class="nf">GenerateProgram</span><span class="p">(</span><span class="n">GLuint</span><span class="w"> </span><span class="n">cs</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">GLuint</span><span class="w"> </span><span class="n">program</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">glCreateProgram</span><span class="p">();</span>
+<span class="w">  </span><span class="n">glAttachShader</span><span class="p">(</span><span class="n">program</span><span class="p">,</span><span class="w"> </span><span class="n">cs</span><span class="p">);</span>
+<span class="w">  </span><span class="n">glLinkProgram</span><span class="p">(</span><span class="n">program</span><span class="p">);</span>
+<span class="w">  </span><span class="n">GLint</span><span class="w"> </span><span class="n">isLinked</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="n">glGetProgramiv</span><span class="p">(</span><span class="n">program</span><span class="p">,</span><span class="w"> </span><span class="n">GL_LINK_STATUS</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">isLinked</span><span class="p">);</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">isLinked</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="n">GLint</span><span class="w"> </span><span class="n">maxLength</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">    </span><span class="n">glGetProgramiv</span><span class="p">(</span><span class="n">program</span><span class="p">,</span><span class="w"> </span><span class="n">GL_INFO_LOG_LENGTH</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">maxLength</span><span class="p">);</span>
+<span class="w">    </span><span class="n">GLchar</span><span class="o">*</span><span class="w"> </span><span class="n">errorLog</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">GLchar</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="n">maxLength</span><span class="p">);</span>
+<span class="w">    </span><span class="n">glGetProgramInfoLog</span><span class="p">(</span><span class="n">program</span><span class="p">,</span><span class="w"> </span><span class="n">maxLength</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">maxLength</span><span class="p">,</span><span class="w"> </span><span class="n">errorLog</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Shader linker error: %s&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">errorLog</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">glDeleteProgram</span><span class="p">(</span><span class="n">program</span><span class="p">);</span>
+<span class="w">    </span><span class="n">exit</span><span class="p">(</span><span class="mi">5</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">program</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kr">inline</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">GLuint</span><span class="w"> </span><span class="nf">GenerateProgram</span><span class="p">(</span><span class="n">GLuint</span><span class="w"> </span><span class="n">vs</span><span class="p">,</span><span class="w"> </span><span class="n">GLuint</span><span class="w"> </span><span class="n">fs</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="n">GLuint</span><span class="w"> </span><span class="n">program</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">glCreateProgram</span><span class="p">();</span>
+<span class="w">  </span><span class="n">glAttachShader</span><span class="p">(</span><span class="n">program</span><span class="p">,</span><span class="w"> </span><span class="n">vs</span><span class="p">);</span>
+<span class="w">  </span><span class="n">glAttachShader</span><span class="p">(</span><span class="n">program</span><span class="p">,</span><span class="w"> </span><span class="n">fs</span><span class="p">);</span>
+<span class="w">  </span><span class="n">glLinkProgram</span><span class="p">(</span><span class="n">program</span><span class="p">);</span>
+<span class="w">  </span><span class="n">GLint</span><span class="w"> </span><span class="n">isLinked</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="w">  </span><span class="n">glGetProgramiv</span><span class="p">(</span><span class="n">program</span><span class="p">,</span><span class="w"> </span><span class="n">GL_LINK_STATUS</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">isLinked</span><span class="p">);</span>
+<span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">isLinked</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">    </span><span class="n">GLint</span><span class="w"> </span><span class="n">maxLength</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w">  </span>
+<span class="w">    </span><span class="n">glGetProgramiv</span><span class="p">(</span><span class="n">program</span><span class="p">,</span><span class="w"> </span><span class="n">GL_INFO_LOG_LENGTH</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">maxLength</span><span class="p">);</span>
+<span class="w">    </span><span class="n">GLchar</span><span class="o">*</span><span class="w"> </span><span class="n">errorLog</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">GLchar</span><span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="n">maxLength</span><span class="p">);</span>
+<span class="w">    </span><span class="n">glGetProgramInfoLog</span><span class="p">(</span><span class="n">program</span><span class="p">,</span><span class="w"> </span><span class="n">maxLength</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">maxLength</span><span class="p">,</span><span class="w"> </span><span class="n">errorLog</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="s">&quot;Shader linker error: %s&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">errorLog</span><span class="p">);</span>
+
+<span class="w">    </span><span class="n">glDeleteProgram</span><span class="p">(</span><span class="n">program</span><span class="p">);</span>
+<span class="w">    </span><span class="n">exit</span><span class="p">(</span><span class="mi">5</span><span class="p">);</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">program</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<p>
+  In the setup section of the code we can compile the shaders using these utilities functions. If there
+  are any errors in the shaders of any kind we simply dump the error log and exit the whole application.
+  This is a bit harsh but for small demo applications it is jolly convenient.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1">// ...</span>
+<span class="n">GLuint</span><span class="w"> </span><span class="n">quad_vs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">CompileShader</span><span class="p">(</span><span class="n">GL_VERTEX_SHADER</span><span class="p">,</span><span class="w"> </span><span class="n">quad_shader_vs</span><span class="p">);</span>
+<span class="n">GLuint</span><span class="w"> </span><span class="n">quad_fs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">CompileShader</span><span class="p">(</span><span class="n">GL_FRAGMENT_SHADER</span><span class="p">,</span><span class="w"> </span><span class="n">quad_shader_fs</span><span class="p">);</span>
+<span class="n">GLuint</span><span class="w"> </span><span class="n">quad_shader</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">GenerateProgram</span><span class="p">(</span><span class="n">quad_vs</span><span class="p">,</span><span class="w"> </span><span class="n">quad_fs</span><span class="p">);</span>
+<span class="c1">// ...</span>
+</pre></div>
+
+</p>
+
+<h3>3.2 Creating a vertex buffer</h3>
+
+<p>
+  At this point we have setup the required systems that can handle the rendering of 2d triangles
+  but we haven't actually given it the correct data yet. 
+  OpenGL forces us to define this data beforehand.
+  It does this for the very good reason that the communication between the GPU and the CPU is
+  relatively slow. At first sight this is actually a bit surprising because modern GPUs measure
+  their throughput in GB/s.
+  However, the actual time that is required to make a round trip is pretty significant. So significant
+  in fact that it quickly becomes problematic if we wish to send the scene data to the GPU every single
+  frame, a.k.a 60 times per second. 
+  Interestingly this constraint comes directly from the speed at which electrons travel and the relatively 
+  high distance between the CPU and GPU in your actual computer.
+  Conclusively, we have to create a buffer (called a vertex buffer object) on the GPU once during the setup.
+</p>
+
+<p>
+  When rendering an object there are a couple of things that we have to specify. A few examples
+  are which buffers are bound to which shader variable and, which shader variables are activated.
+  Usually these remain constant for the same rendering tasks and it would be pretty cumbersome and not to mention
+  error prone to constantly set up again.
+  As a solution OpenGL provides us with a thing called a Vertex Attribute Object (VAO), which will bundle all
+  those details about how the information is bound to the rendering stages and allow us to restore that state
+  by simply binding just the VAO itself.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1">// 2 triangles, each made up by 3, 2d points.</span>
+<span class="kt">float</span><span class="w"> </span><span class="n">quad_data</span><span class="p">[</span><span class="mi">12</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="mf">-1.0</span><span class="p">,</span><span class="w"> </span><span class="mf">-1.0</span><span class="p">,</span>
+<span class="w">        </span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="mf">-1.0</span><span class="p">,</span>
+<span class="w">        </span><span class="mf">-1.0</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+
+<span class="w">        </span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">        </span><span class="mf">-1.0</span><span class="p">,</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">        </span><span class="mf">1.0</span><span class="p">,</span><span class="w"> </span><span class="mf">-1.0</span><span class="p">,</span>
+<span class="p">};</span>
+
+<span class="n">GLuint</span><span class="w"> </span><span class="n">quad_vao</span><span class="p">,</span><span class="w"> </span><span class="n">quad_vbo</span><span class="p">;</span>
+<span class="n">glGenVertexArrays</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">quad_vao</span><span class="p">);</span>
+<span class="n">glGenBuffers</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">quad_vbo</span><span class="p">);</span>
+
+<span class="c1">// Binding the vao is required to save the state information</span>
+<span class="n">glBindVertexArray</span><span class="p">(</span><span class="n">quad_vao</span><span class="p">);</span>
+
+<span class="c1">// Bind the buffer to GL_ARRAY_BUFFER slot then fill it with the quad data array</span>
+<span class="n">glBindBuffer</span><span class="p">(</span><span class="n">GL_ARRAY_BUFFER</span><span class="p">,</span><span class="w"> </span><span class="n">quad_vbo</span><span class="p">);</span>
+<span class="n">glBufferData</span><span class="p">(</span><span class="n">GL_ARRAY_BUFFER</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">quad_data</span><span class="p">),</span><span class="w"> </span><span class="n">quad_data</span><span class="p">,</span><span class="w"> </span><span class="n">GL_STATIC_DRAW</span><span class="p">);</span>
+
+<span class="c1">// Bind the currently bound buffer to variable at location = 0 in the shader</span>
+<span class="n">glVertexAttribPointer</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">GL_FLOAT</span><span class="p">,</span><span class="w"> </span><span class="nb">false</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">);</span>
+
+<span class="c1">// Enable the variable at location = 0.</span>
+<span class="n">glEnableVertexAttribArray</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+
+<span class="c1">// It is good practice to unbind any vao when they are not being used.</span>
+<span class="n">glBindVertexArray</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+</pre></div>
+
+</p>
+
+<h3>3.3 Creating textures</h3>
+
+<p>
+The final element required to render the textures are the textures themselves. 
+Using a kernel in image processing almost always requires a double buffered situation.
+That requirement naturally follows from the fact that the resulting pixel in the output depends on more than 
+one pixel in the original image, making it impossible to replace the pixels inline as we go.
+So let's create two identical textures in the setup section of code.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="n">GLuint</span><span class="w"> </span><span class="n">buf</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span>
+<span class="k">for</span><span class="p">(</span><span class="kt">unsigned</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">buf</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">glGenTextures</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="n">i</span><span class="p">);</span>
+<span class="w">    </span><span class="n">glBindTexture</span><span class="p">(</span><span class="n">GL_TEXTURE_2D</span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="p">);</span>
+<span class="w">    </span><span class="n">glTexImage2D</span><span class="p">(</span><span class="n">GL_TEXTURE_2D</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">GL_RGBA32F</span><span class="p">,</span><span class="w"> </span><span class="n">WIDTH</span><span class="p">,</span><span class="w"> </span><span class="n">HEIGHT</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">GL_RGBA</span><span class="p">,</span><span class="w"> </span><span class="n">GL_FLOAT</span><span class="p">,</span><span class="w"> </span><span class="nb">nullptr</span><span class="p">);</span>
+<span class="w">    </span><span class="n">glTextureParameteri</span><span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="w"> </span><span class="n">GL_TEXTURE_MIN_FILTER</span><span class="p">,</span><span class="w"> </span><span class="n">GL_LINEAR</span><span class="p">);</span>
+<span class="w">    </span><span class="n">glTextureParameteri</span><span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="w"> </span><span class="n">GL_TEXTURE_MAG_FILTER</span><span class="p">,</span><span class="w"> </span><span class="n">GL_LINEAR</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<p>
+Now finally we have everything ready to actually execute the instructions that render the textures to the screen.
+To make it double buffered, we will flip the notion of which is the 'main' texture every frame.
+</p>
+
+<h3>3.4 Making the render call</h3>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kt">int</span><span class="w"> </span><span class="n">tick</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="k">while</span><span class="p">(</span><span class="o">!</span><span class="n">glfwWindowShouldClose</span><span class="p">(</span><span class="n">window</span><span class="p">))</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">glClear</span><span class="p">(</span><span class="n">GL_COLOR_BUFFER_BIT</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// Use the quad shader</span>
+<span class="w">    </span><span class="n">glUseProgram</span><span class="p">(</span><span class="n">quad_shader</span><span class="p">);</span>
+<span class="w">    </span>
+<span class="w">    </span><span class="c1">// Bind one of the two textures, based on the current tick</span>
+<span class="w">    </span><span class="n">glBindTexture</span><span class="p">(</span><span class="n">GL_TEXTURE_2D</span><span class="p">,</span><span class="w"> </span><span class="n">buf</span><span class="p">[</span><span class="n">tick</span><span class="o">%</span><span class="mi">2</span><span class="p">]);</span>
+
+<span class="w">    </span><span class="c1">// Load the vertex attribute object</span>
+<span class="w">    </span><span class="n">glBindVertexArray</span><span class="p">(</span><span class="n">quad_vao</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// Dispatch the rendering pipeline</span>
+<span class="w">    </span><span class="n">glDrawArrays</span><span class="p">(</span><span class="n">GL_TRIANGLES</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">6</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// Unbind the vao</span>
+<span class="w">    </span><span class="n">glBindVertexArray</span><span class="p">(</span><span class="mi">0</span><span class="p">);</span>
+
+
+<span class="w">    </span><span class="n">glfwPollEvents</span><span class="p">();</span>
+<span class="w">    </span><span class="n">glfwSwapBuffers</span><span class="p">(</span><span class="n">window</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// Increase the frame counter</span>
+<span class="w">    </span><span class="n">tick</span><span class="o">++</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<h3>3.5 Sanity checks and rainbows</h3>
+At this point we still cannot expect to see anything on the screen. 
+After all, we gave the textures no actual data, so OpenGL will just initialize them with a black color.
+To check whether the entire codebase is working up until now, we would have to initialize the textures with an image
+or just some random color data.
+However, this is not super trivial. Especially considering that that code will not be part of the final product.
+Instead I usually settle for a shortcut where we leave the texture part aside for now but temporarily change the fragment
+shader to output a color based on the pixel coordinate. That way we can confirm that the rendering pipeline is mostly working.
+So, if we adjust the fragment shader to look like the following we should get a nice gradient output.
+The redness grows along the x-axis, and the greenness grows along the y-axis.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="cp">#version 460</span>
+
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mo">0</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">sampler2D</span><span class="w"> </span><span class="n">tex</span><span class="p">;</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">time</span><span class="p">;</span>
+<span class="k">in</span><span class="w"> </span><span class="kt">vec2</span><span class="w"> </span><span class="n">uv</span><span class="p">;</span>
+<span class="k">out</span><span class="w"> </span><span class="kt">vec4</span><span class="w"> </span><span class="n">color</span><span class="p">;</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">color</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="n">uv</span><span class="p">,</span><span class="w"> </span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<img src="gradient.png" width: 100% max-width: 640px/>
+
+<h2>4. Manipulating the textures with a compute shader</h2>
+
+<p>
+Fairly recently (since version 4.3) OpenGL introduced the notion of compute shaders.
+The idea here is to allow for a very generic compute operations that are not necessarily bound to vertices or fragments.
+In essence they are not very different from the other shaders, just slightly more free.
+
+
+<h3> 4.1 A minimal compute shader </h3>
+
+As a first version we might consider a program that will just display a simple example to ensure that the pipeline is working.
+Since we already have seen the gradient pattern, we might as well try something new, like a checker pattern.
+Back in my post about the <a href="/posts/2/">Knight of Hamilton</a> we already discussed what mathematical rule generates
+a checkerboard pattern. Namely: color the block white if \((x+y) % 2 == 0)\ otherwise black.
+To make this article epilepsy friendly, we could consider scaling the coordinates down by a factor of say 32 so that not every
+pixel is its own distinct square.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="cp">#version 460</span>
+
+<span class="c1">// Define the group size (unrelated to the size of the checkerboard!)</span>
+<span class="c1">// For your GPU you might be forced to lower these numbers</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">local_size_x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32</span><span class="p">,</span><span class="w"> </span><span class="n">local_size_y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32</span><span class="p">)</span><span class="w"> </span><span class="k">in</span><span class="p">;</span>
+
+<span class="c1">// Define the screen size variable</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">ivec2</span><span class="w"> </span><span class="n">size</span><span class="p">;</span>
+
+
+<span class="c1">// Define the texture slots</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="n">rgba32f</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">image2D</span><span class="w"> </span><span class="n">sourceTex</span><span class="p">;</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">rgba32f</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">image2D</span><span class="w"> </span><span class="n">destTex</span><span class="p">;</span>
+
+
+<span class="kt">void</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="c1">// The invocation id maps directly to pixel coords</span>
+<span class="w">    </span><span class="kt">ivec2</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="nb">gl_GlobalInvocationID</span><span class="p">.</span><span class="n">xy</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// Stop execution if we are not in a valid pixel</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">storePos</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mo">0</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">storePos</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">size</span><span class="p">.</span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">storePos</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mo">0</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">storePos</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">size</span><span class="p">.</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+
+
+<span class="w">    </span><span class="c1">// Use the checkboard formula to determine the color</span>
+<span class="w">    </span><span class="kt">vec4</span><span class="w"> </span><span class="n">color</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">storePos</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">32</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">storePos</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mi">32</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mo">0</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="mo">0</span><span class="p">)</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+<span class="w">    </span><span class="n">imageStore</span><span class="p">(</span><span class="n">destTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="p">,</span><span class="w"> </span><span class="n">color</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+Then to actually call the shader we have to first compile it in the setup stage:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="n">GLuint</span><span class="w"> </span><span class="n">fire_program</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">GenerateProgram</span><span class="p">(</span><span class="n">CompileShader</span><span class="p">(</span><span class="n">GL_COMPUTE_SHADER</span><span class="p">,</span><span class="w"> </span><span class="n">cs_fire</span><span class="p">));</span>
+</pre></div>
+
+</p>
+
+Then call it in the render loop:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1">// Bind the shader</span>
+<span class="n">glUseProgram</span><span class="p">(</span><span class="n">fire_program</span><span class="p">);</span>
+
+<span class="c1">// Tell it the window size</span>
+<span class="n">glUniform2i</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">WIDTH</span><span class="p">,</span><span class="w"> </span><span class="n">HEIGHT</span><span class="p">);</span>
+
+<span class="c1">// Bind one of the textures to the &#39;0&#39; slot</span>
+<span class="n">glBindImageTexture</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">buf</span><span class="p">[</span><span class="n">tick</span><span class="o">%</span><span class="mi">2</span><span class="p">],</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">GL_FALSE</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">GL_READ_ONLY</span><span class="p">,</span><span class="w"> </span><span class="n">GL_RGBA32F</span><span class="p">);</span>
+
+<span class="c1">// Bind the other to the &#39;1&#39; slot</span>
+<span class="n">glBindImageTexture</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">buf</span><span class="p">[(</span><span class="n">tick</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">%</span><span class="mi">2</span><span class="p">],</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">GL_FALSE</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">GL_WRITE_ONLY</span><span class="p">,</span><span class="w"> </span><span class="n">GL_RGBA32F</span><span class="p">);</span>
+
+<span class="c1">// Dispatch the shader groups of 32 by 32 enough times to cover the entire image.</span>
+<span class="c1">// Again, this 32 refers to the group size, not the size of squares on the checkerboard.</span>
+<span class="n">glDispatchCompute</span><span class="p">(</span><span class="n">WIDTH</span><span class="o">/</span><span class="mi">32</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">HEIGHT</span><span class="o">/</span><span class="mi">32</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">);</span>
+</pre></div>
+
+</p>
+
+<img src="checkers.png" max-width: 640px />
+
+<p>
+Let's reflect for a second on what is happening here.
+If you were to implement the same logic as we just did on the cpu you might write the following nested loop:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">y</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="o">&lt;</span><span class="n">image_height</span><span class="p">;</span><span class="w"> </span><span class="n">y</span><span class="o">++</span><span class="p">)</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">x</span><span class="o">=</span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="o">&lt;</span><span class="n">image_width</span><span class="p">;</span><span class="w"> </span><span class="n">x</span><span class="o">++</span><span class="p">)</span>
+<span class="w">      </span><span class="p">...</span>
+</pre></div>
+
+</p>
+
+<p>
+The compute shader is not much different from this except that the GPU has abstracted away the for loops to help it
+with its own multithreaded execution. 
+In the shader we have defined the work group size as a square of 32 by 32 units. This means that 32*32 instances of the 
+program are executed in parallel. The vector found in the <code>gl_GlobalInvocationID</code> variable tells us the values of which execution
+we are globally.
+The number of times we have to execute this program then depends of how many times a 32 by 32 grid fits in the entire image.
+</p>
+
+<h2>4.1 a moving blur kernel</h2>
+
+<p>
+Image processing is a field of computer science whose foundation is heavily dependent on the concept
+of kernels. This sort of kernel should not be confused with what people call the 'linux kernel'.
+As far as I know these two concept are completely unrelated, despite the similar name.
+In image processing when people talk about a kernel they mean a mapping of some pixels of an image
+onto another image. 
+This mapping often is in the form many-to-one.
+In other words, the value of the pixel in the output is defined as an expression containing a number of pixels in the input.
+</p>
+
+
+<p>
+In this project we are going to use a very simple kernel that creates blurring effect.
+This kernel is defined by the following expression: 
+</p>
+
+<p>
+\(output[x,y] = \frac{input[x+1,y] + input[x, y+1] + input[x-1, y] + input[x, y-1]}{4}\)
+</p>
+
+<p>
+In other words, the average of the four neighbouring pixels.
+Because we are going to apply this filter iteratively, the values slowly spread out indefinitely.
+However, they do not spread out upward like we expect a flame to do.
+In order to achieve this effect we simply shift every pixel up in the output.
+In fact, I found that moving by two pixels every step gives the fire a more realistic
+hasty feeling.
+</p>
+
+<p>
+To make sure the fire effect does not fade away never to come back we introduce a permanent source
+of energy at the bottom of screen. Therefore, next to kernel we also add an edge case that every 
+pixel lower than y=8 is completely white regardless. Let's see how this translates to the compute
+shader:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="kt">ivec2</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="nb">gl_GlobalInvocationID</span><span class="p">.</span><span class="n">xy</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">vec2</span><span class="w"> </span><span class="n">storePosf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="n">storePos</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="n">size</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">storePos</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">storePos</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">size</span><span class="p">.</span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">storePos</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">storePos</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">size</span><span class="p">.</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+
+
+<span class="w">    </span><span class="c1">// Load the color of the four neighbouring pixels</span>
+<span class="w">    </span><span class="kt">vec4</span><span class="w"> </span><span class="n">c0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">imageLoad</span><span class="p">(</span><span class="n">sourceTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mo">0</span><span class="p">));</span>
+<span class="w">    </span><span class="kt">vec4</span><span class="w"> </span><span class="n">c1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">imageLoad</span><span class="p">(</span><span class="n">sourceTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mo">0</span><span class="p">));</span>
+<span class="w">    </span><span class="kt">vec4</span><span class="w"> </span><span class="n">c2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">imageLoad</span><span class="p">(</span><span class="n">sourceTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">));</span>
+<span class="w">    </span><span class="kt">vec4</span><span class="w"> </span><span class="n">c3</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">imageLoad</span><span class="p">(</span><span class="n">sourceTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="mo">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">));</span>
+
+<span class="w">    </span><span class="c1">// Take the average of the values</span>
+<span class="w">    </span><span class="kt">vec4</span><span class="w"> </span><span class="n">newCol</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">c0</span><span class="o">+</span><span class="n">c1</span><span class="o">+</span><span class="n">c2</span><span class="o">+</span><span class="n">c3</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.25</span><span class="p">;</span>
+
+<span class="w">    </span><span class="c1">// Override the color if we are in the bottom of the screen</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">storePos</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">8</span><span class="p">)</span><span class="w"> </span><span class="n">newCol</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// Write new values two pixels up.</span>
+<span class="w">    </span><span class="n">imageStore</span><span class="p">(</span><span class="n">destTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">),</span><span class="w"> </span><span class="n">newCol</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<p>
+The result of this adjustment should look something like this.
+It is this effect that causes the fire to move upwards.
+</p>
+
+<img src="blur.gif" width:100% max-width:640px/>
+
+<h2>4.2 Cooling down with noise</h2>
+
+<p>
+It doesn't really look like fire yet.
+The main problem with this is that flames move up uniformly.
+What we need is some source of randomness that 'cools' the flames in some parts of the image but
+not others.
+While it is possible to create a pretty good random function in glsl it is not exactly what we are
+looking for.
+After all, flames usually span multiple pixels, meaning that pixels that are close to each other
+are at least somewhat related. 
+</p>
+
+<p>
+This correlation between neighbouring pixels a is desirable property for a whole array of 
+applications such as terrain generation, where height of the terrain ought to be continuous. 
+As a result, a lot of research has already been spent on this subject and many algorithms are
+freely available.
+The king of such algorithms is undoubtedly the one developed by Ken Perlin.
+His algorithm is unsurprisingly called Perlin noise.
+A glsl implementation of this algorithm, among many others, is provided by the github user
+<a href="https://gist.github.com/patriciogonzalezvivo/670c22f3966e662d2f83">patriciogonzalezvivo</a>.
+</p>
+
+<p>
+To actually animate the fire it is necessary to move the noise map up gradually.
+Necessary for this feature, among many future animated components, is the current time, which
+we pipe to the shader using another uniform variable.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="cp">#version 460</span>
+
+<span class="k">layout</span><span class="p">(</span><span class="n">local_size_x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32</span><span class="p">,</span><span class="w"> </span><span class="n">local_size_y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">32</span><span class="p">)</span><span class="w"> </span><span class="k">in</span><span class="p">;</span>
+
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mo">0</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">time</span><span class="p">;</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">location</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">ivec2</span><span class="w"> </span><span class="n">size</span><span class="p">;</span>
+
+<span class="k">layout</span><span class="p">(</span><span class="n">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="n">rgba32f</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">image2D</span><span class="w"> </span><span class="n">sourceTex</span><span class="p">;</span>
+<span class="k">layout</span><span class="p">(</span><span class="n">binding</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">rgba32f</span><span class="p">)</span><span class="w"> </span><span class="k">uniform</span><span class="w"> </span><span class="kt">image2D</span><span class="w"> </span><span class="n">destTex</span><span class="p">;</span>
+
+<span class="c1">//  Classic Perlin 3D Noise</span>
+<span class="c1">//  by Stefan Gustavson</span>
+<span class="kt">vec4</span><span class="w"> </span><span class="n">permute</span><span class="p">(</span><span class="kt">vec4</span><span class="w"> </span><span class="n">x</span><span class="p">){</span><span class="k">return</span><span class="w"> </span><span class="n">mod</span><span class="p">(((</span><span class="n">x</span><span class="o">*</span><span class="mf">34.0</span><span class="p">)</span><span class="o">+</span><span class="mf">1.0</span><span class="p">)</span><span class="o">*</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="mf">289.0</span><span class="p">);}</span>
+<span class="kt">vec4</span><span class="w"> </span><span class="n">taylorInvSqrt</span><span class="p">(</span><span class="kt">vec4</span><span class="w"> </span><span class="n">r</span><span class="p">){</span><span class="k">return</span><span class="w"> </span><span class="mf">1.79284291400159</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">0.85373472095314</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">r</span><span class="p">;}</span>
+<span class="kt">vec3</span><span class="w"> </span><span class="n">fade</span><span class="p">(</span><span class="kt">vec3</span><span class="w"> </span><span class="n">t</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="k">return</span><span class="w"> </span><span class="n">t</span><span class="o">*</span><span class="n">t</span><span class="o">*</span><span class="n">t</span><span class="o">*</span><span class="p">(</span><span class="n">t</span><span class="o">*</span><span class="p">(</span><span class="n">t</span><span class="o">*</span><span class="mf">6.0</span><span class="o">-</span><span class="mf">15.0</span><span class="p">)</span><span class="o">+</span><span class="mf">10.0</span><span class="p">);}</span>
+
+<span class="kt">float</span><span class="w"> </span><span class="n">cnoise</span><span class="p">(</span><span class="kt">vec3</span><span class="w"> </span><span class="n">P</span><span class="p">){</span>
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">Pi0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">floor</span><span class="p">(</span><span class="n">P</span><span class="p">);</span><span class="w"> </span><span class="c1">// Integer part for indexing</span>
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">Pi1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Pi0</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="mf">1.0</span><span class="p">);</span><span class="w"> </span><span class="c1">// Integer part + 1</span>
+<span class="w">  </span><span class="n">Pi0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mod</span><span class="p">(</span><span class="n">Pi0</span><span class="p">,</span><span class="w"> </span><span class="mf">289.0</span><span class="p">);</span>
+<span class="w">  </span><span class="n">Pi1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mod</span><span class="p">(</span><span class="n">Pi1</span><span class="p">,</span><span class="w"> </span><span class="mf">289.0</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">Pf0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fract</span><span class="p">(</span><span class="n">P</span><span class="p">);</span><span class="w"> </span><span class="c1">// Fractional part for interpolation</span>
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">Pf1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Pf0</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="mf">1.0</span><span class="p">);</span><span class="w"> </span><span class="c1">// Fractional part - 1.0</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">ix</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="n">Pi0</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">Pi1</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">Pi0</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">Pi1</span><span class="p">.</span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">iy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="n">Pi0</span><span class="p">.</span><span class="n">yy</span><span class="p">,</span><span class="w"> </span><span class="n">Pi1</span><span class="p">.</span><span class="n">yy</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">iz0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Pi0</span><span class="p">.</span><span class="n">zzzz</span><span class="p">;</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">iz1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Pi1</span><span class="p">.</span><span class="n">zzzz</span><span class="p">;</span>
+
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">ixy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">permute</span><span class="p">(</span><span class="n">permute</span><span class="p">(</span><span class="n">ix</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iy</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">ixy0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">permute</span><span class="p">(</span><span class="n">ixy</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iz0</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">ixy1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">permute</span><span class="p">(</span><span class="n">ixy</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">iz1</span><span class="p">);</span>
+
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">gx0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ixy0</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">7.0</span><span class="p">;</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">gy0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fract</span><span class="p">(</span><span class="n">floor</span><span class="p">(</span><span class="n">gx0</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">7.0</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">0.5</span><span class="p">;</span>
+<span class="w">  </span><span class="n">gx0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fract</span><span class="p">(</span><span class="n">gx0</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">gz0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">abs</span><span class="p">(</span><span class="n">gx0</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">abs</span><span class="p">(</span><span class="n">gy0</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">sz0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">step</span><span class="p">(</span><span class="n">gz0</span><span class="p">,</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="mf">0.0</span><span class="p">));</span>
+<span class="w">  </span><span class="n">gx0</span><span class="w"> </span><span class="o">-=</span><span class="w"> </span><span class="n">sz0</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="n">step</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="n">gx0</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">0.5</span><span class="p">);</span>
+<span class="w">  </span><span class="n">gy0</span><span class="w"> </span><span class="o">-=</span><span class="w"> </span><span class="n">sz0</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="n">step</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="n">gy0</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">0.5</span><span class="p">);</span>
+
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">gx1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ixy1</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">7.0</span><span class="p">;</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">gy1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fract</span><span class="p">(</span><span class="n">floor</span><span class="p">(</span><span class="n">gx1</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="mf">7.0</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">0.5</span><span class="p">;</span>
+<span class="w">  </span><span class="n">gx1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fract</span><span class="p">(</span><span class="n">gx1</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">gz1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">abs</span><span class="p">(</span><span class="n">gx1</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">abs</span><span class="p">(</span><span class="n">gy1</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">sz1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">step</span><span class="p">(</span><span class="n">gz1</span><span class="p">,</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="mf">0.0</span><span class="p">));</span>
+<span class="w">  </span><span class="n">gx1</span><span class="w"> </span><span class="o">-=</span><span class="w"> </span><span class="n">sz1</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="n">step</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="n">gx1</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">0.5</span><span class="p">);</span>
+<span class="w">  </span><span class="n">gy1</span><span class="w"> </span><span class="o">-=</span><span class="w"> </span><span class="n">sz1</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="n">step</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span><span class="w"> </span><span class="n">gy1</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">0.5</span><span class="p">);</span>
+
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">g000</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">gx0</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="n">gy0</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="n">gz0</span><span class="p">.</span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">g100</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">gx0</span><span class="p">.</span><span class="n">y</span><span class="p">,</span><span class="n">gy0</span><span class="p">.</span><span class="n">y</span><span class="p">,</span><span class="n">gz0</span><span class="p">.</span><span class="n">y</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">g010</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">gx0</span><span class="p">.</span><span class="n">z</span><span class="p">,</span><span class="n">gy0</span><span class="p">.</span><span class="n">z</span><span class="p">,</span><span class="n">gz0</span><span class="p">.</span><span class="n">z</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">g110</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">gx0</span><span class="p">.</span><span class="n">w</span><span class="p">,</span><span class="n">gy0</span><span class="p">.</span><span class="n">w</span><span class="p">,</span><span class="n">gz0</span><span class="p">.</span><span class="n">w</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">g001</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">gx1</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="n">gy1</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="n">gz1</span><span class="p">.</span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">g101</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">gx1</span><span class="p">.</span><span class="n">y</span><span class="p">,</span><span class="n">gy1</span><span class="p">.</span><span class="n">y</span><span class="p">,</span><span class="n">gz1</span><span class="p">.</span><span class="n">y</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">g011</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">gx1</span><span class="p">.</span><span class="n">z</span><span class="p">,</span><span class="n">gy1</span><span class="p">.</span><span class="n">z</span><span class="p">,</span><span class="n">gz1</span><span class="p">.</span><span class="n">z</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">g111</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">gx1</span><span class="p">.</span><span class="n">w</span><span class="p">,</span><span class="n">gy1</span><span class="p">.</span><span class="n">w</span><span class="p">,</span><span class="n">gz1</span><span class="p">.</span><span class="n">w</span><span class="p">);</span>
+
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">norm0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">taylorInvSqrt</span><span class="p">(</span><span class="kt">vec4</span><span class="p">(</span><span class="n">dot</span><span class="p">(</span><span class="n">g000</span><span class="p">,</span><span class="w"> </span><span class="n">g000</span><span class="p">),</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g010</span><span class="p">,</span><span class="w"> </span><span class="n">g010</span><span class="p">),</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g100</span><span class="p">,</span><span class="w"> </span><span class="n">g100</span><span class="p">),</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g110</span><span class="p">,</span><span class="w"> </span><span class="n">g110</span><span class="p">)));</span>
+<span class="w">  </span><span class="n">g000</span><span class="w"> </span><span class="o">*=</span><span class="w"> </span><span class="n">norm0</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+<span class="w">  </span><span class="n">g010</span><span class="w"> </span><span class="o">*=</span><span class="w"> </span><span class="n">norm0</span><span class="p">.</span><span class="n">y</span><span class="p">;</span>
+<span class="w">  </span><span class="n">g100</span><span class="w"> </span><span class="o">*=</span><span class="w"> </span><span class="n">norm0</span><span class="p">.</span><span class="n">z</span><span class="p">;</span>
+<span class="w">  </span><span class="n">g110</span><span class="w"> </span><span class="o">*=</span><span class="w"> </span><span class="n">norm0</span><span class="p">.</span><span class="n">w</span><span class="p">;</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">norm1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">taylorInvSqrt</span><span class="p">(</span><span class="kt">vec4</span><span class="p">(</span><span class="n">dot</span><span class="p">(</span><span class="n">g001</span><span class="p">,</span><span class="w"> </span><span class="n">g001</span><span class="p">),</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g011</span><span class="p">,</span><span class="w"> </span><span class="n">g011</span><span class="p">),</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g101</span><span class="p">,</span><span class="w"> </span><span class="n">g101</span><span class="p">),</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g111</span><span class="p">,</span><span class="w"> </span><span class="n">g111</span><span class="p">)));</span>
+<span class="w">  </span><span class="n">g001</span><span class="w"> </span><span class="o">*=</span><span class="w"> </span><span class="n">norm1</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+<span class="w">  </span><span class="n">g011</span><span class="w"> </span><span class="o">*=</span><span class="w"> </span><span class="n">norm1</span><span class="p">.</span><span class="n">y</span><span class="p">;</span>
+<span class="w">  </span><span class="n">g101</span><span class="w"> </span><span class="o">*=</span><span class="w"> </span><span class="n">norm1</span><span class="p">.</span><span class="n">z</span><span class="p">;</span>
+<span class="w">  </span><span class="n">g111</span><span class="w"> </span><span class="o">*=</span><span class="w"> </span><span class="n">norm1</span><span class="p">.</span><span class="n">w</span><span class="p">;</span>
+
+<span class="w">  </span><span class="kt">float</span><span class="w"> </span><span class="n">n000</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g000</span><span class="p">,</span><span class="w"> </span><span class="n">Pf0</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">float</span><span class="w"> </span><span class="n">n100</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g100</span><span class="p">,</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">Pf1</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">Pf0</span><span class="p">.</span><span class="n">yz</span><span class="p">));</span>
+<span class="w">  </span><span class="kt">float</span><span class="w"> </span><span class="n">n010</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g010</span><span class="p">,</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">Pf0</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">Pf1</span><span class="p">.</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">Pf0</span><span class="p">.</span><span class="n">z</span><span class="p">));</span>
+<span class="w">  </span><span class="kt">float</span><span class="w"> </span><span class="n">n110</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g110</span><span class="p">,</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">Pf1</span><span class="p">.</span><span class="n">xy</span><span class="p">,</span><span class="w"> </span><span class="n">Pf0</span><span class="p">.</span><span class="n">z</span><span class="p">));</span>
+<span class="w">  </span><span class="kt">float</span><span class="w"> </span><span class="n">n001</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g001</span><span class="p">,</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">Pf0</span><span class="p">.</span><span class="n">xy</span><span class="p">,</span><span class="w"> </span><span class="n">Pf1</span><span class="p">.</span><span class="n">z</span><span class="p">));</span>
+<span class="w">  </span><span class="kt">float</span><span class="w"> </span><span class="n">n101</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g101</span><span class="p">,</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">Pf1</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">Pf0</span><span class="p">.</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">Pf1</span><span class="p">.</span><span class="n">z</span><span class="p">));</span>
+<span class="w">  </span><span class="kt">float</span><span class="w"> </span><span class="n">n011</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g011</span><span class="p">,</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">Pf0</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">Pf1</span><span class="p">.</span><span class="n">yz</span><span class="p">));</span>
+<span class="w">  </span><span class="kt">float</span><span class="w"> </span><span class="n">n111</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dot</span><span class="p">(</span><span class="n">g111</span><span class="p">,</span><span class="w"> </span><span class="n">Pf1</span><span class="p">);</span>
+
+<span class="w">  </span><span class="kt">vec3</span><span class="w"> </span><span class="n">fade_xyz</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fade</span><span class="p">(</span><span class="n">Pf0</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec4</span><span class="w"> </span><span class="n">n_z</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mix</span><span class="p">(</span><span class="kt">vec4</span><span class="p">(</span><span class="n">n000</span><span class="p">,</span><span class="w"> </span><span class="n">n100</span><span class="p">,</span><span class="w"> </span><span class="n">n010</span><span class="p">,</span><span class="w"> </span><span class="n">n110</span><span class="p">),</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="n">n001</span><span class="p">,</span><span class="w"> </span><span class="n">n101</span><span class="p">,</span><span class="w"> </span><span class="n">n011</span><span class="p">,</span><span class="w"> </span><span class="n">n111</span><span class="p">),</span><span class="w"> </span><span class="n">fade_xyz</span><span class="p">.</span><span class="n">z</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">vec2</span><span class="w"> </span><span class="n">n_yz</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mix</span><span class="p">(</span><span class="n">n_z</span><span class="p">.</span><span class="n">xy</span><span class="p">,</span><span class="w"> </span><span class="n">n_z</span><span class="p">.</span><span class="n">zw</span><span class="p">,</span><span class="w"> </span><span class="n">fade_xyz</span><span class="p">.</span><span class="n">y</span><span class="p">);</span>
+<span class="w">  </span><span class="kt">float</span><span class="w"> </span><span class="n">n_xyz</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mix</span><span class="p">(</span><span class="n">n_yz</span><span class="p">.</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">n_yz</span><span class="p">.</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">fade_xyz</span><span class="p">.</span><span class="n">x</span><span class="p">);</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="mf">2.2</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">n_xyz</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="kt">ivec2</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="nb">gl_GlobalInvocationID</span><span class="p">.</span><span class="n">xy</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// A special version of the position vector with range [0,1] in both dimensions</span>
+<span class="w">    </span><span class="kt">vec2</span><span class="w"> </span><span class="n">storePosf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="n">storePos</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="n">size</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">storePos</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">storePos</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">size</span><span class="p">.</span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">storePos</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">storePos</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">size</span><span class="p">.</span><span class="n">y</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+
+<span class="w">    </span><span class="c1">// Choose a 3d point that depends on the pixel location and scrolls </span>
+<span class="w">    </span><span class="c1">// up in the y-axis as time increases</span>
+<span class="w">    </span><span class="kt">vec3</span><span class="w"> </span><span class="n">noisePoint</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">storePosf</span><span class="o">*</span><span class="mi">15</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">8</span><span class="o">*</span><span class="n">time</span><span class="p">),</span><span class="w"> </span><span class="mf">0.5</span><span class="o">*</span><span class="w"> </span><span class="n">time</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">cooling</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">abs</span><span class="p">(</span><span class="n">cnoise</span><span class="p">(</span><span class="n">noisePoint</span><span class="p">));</span>
+
+<span class="w">    </span><span class="c1">// Create a greyscale version of the color value</span>
+<span class="w">    </span><span class="kt">vec4</span><span class="w"> </span><span class="n">newCol</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="n">cooling</span><span class="p">);</span>
+<span class="w">    </span><span class="n">imageStore</span><span class="p">(</span><span class="n">destTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="p">,</span><span class="w"> </span><span class="n">newCol</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+Don't forget to send the time to the shader every frame. This allows use to animate the cooling
+map with a scrolling motion. If we used a static noise map then the fire would converge to
+a fixed position.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="n">glUniform1f</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">glfwGetTime</span><span class="p">());</span>
+</pre></div>
+
+</p>
+
+<img src="perlin-noise.gif" width: 100% max-width:640px />
+
+<p>
+  Classical perlin noise generates values in the range [-1,1].
+  Usually these values are clamped to [0,1] to get a smooth continuous noise map.
+  However, for the purpose of a fire effect I found that taking the absolute value and the
+  consequential rough edges are more desirable.
+</p>
+
+<p>
+  To incorporate the noise in the effect we simply subtract the noise from the resulting color.
+  It turned out that the raw values provided a bit too much cooling so I decided to scale it down
+  by a constant factor of 0.4 as well as the y coordinate. That last step ensures that the fire
+  is fairly untouched by the cooling map in lower regions of the image and increasingly more
+  later on. Formally, this means that brightness of the flame follows a parabola with respect to height.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="kt">ivec2</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="nb">gl_GlobalInvocationID</span><span class="p">.</span><span class="n">xy</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">vec2</span><span class="w"> </span><span class="n">storePosf</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="n">storePos</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="n">size</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">storePos</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">storePos</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">size</span><span class="p">.</span><span class="n">x</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">storePos</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">storePos</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">size</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="k">return</span><span class="p">;</span>
+
+
+<span class="w">    </span><span class="kt">vec4</span><span class="w"> </span><span class="n">c0</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">imageLoad</span><span class="p">(</span><span class="n">sourceTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mo">0</span><span class="p">));</span>
+<span class="w">    </span><span class="kt">vec4</span><span class="w"> </span><span class="n">c1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">imageLoad</span><span class="p">(</span><span class="n">sourceTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mo">0</span><span class="p">));</span>
+<span class="w">    </span><span class="kt">vec4</span><span class="w"> </span><span class="n">c2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">imageLoad</span><span class="p">(</span><span class="n">sourceTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">));</span>
+<span class="w">    </span><span class="kt">vec4</span><span class="w"> </span><span class="n">c3</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">imageLoad</span><span class="p">(</span><span class="n">sourceTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="mo">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">));</span>
+<span class="w">    </span><span class="kt">vec4</span><span class="w"> </span><span class="n">newCol</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">c0</span><span class="o">+</span><span class="n">c1</span><span class="o">+</span><span class="n">c2</span><span class="o">+</span><span class="n">c3</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.25</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">vec3</span><span class="w"> </span><span class="n">noisePoint</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">storePosf</span><span class="o">*</span><span class="mi">15</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">8</span><span class="o">*</span><span class="n">time</span><span class="p">),</span><span class="w"> </span><span class="n">time</span><span class="p">);</span>
+<span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">cooling</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.4</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">abs</span><span class="p">(</span><span class="n">cnoise</span><span class="p">(</span><span class="n">noisePoint</span><span class="p">))</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">storePosf</span><span class="p">.</span><span class="n">y</span><span class="p">;</span>
+<span class="w">    </span><span class="n">newCol</span><span class="w"> </span><span class="o">-=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="n">cooling</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">storePos</span><span class="p">.</span><span class="n">y</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">8</span><span class="p">)</span><span class="w"> </span><span class="n">newCol</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="mi">1</span><span class="p">);</span>
+<span class="w">    </span><span class="n">imageStore</span><span class="p">(</span><span class="n">destTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="mo">0</span><span class="p">,</span><span class="mi">2</span><span class="p">),</span><span class="w"> </span><span class="n">newCol</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<p>
+The flames should now really start to come to life.
+</p>
+
+<img src="first-fire.gif" width:100% max-width:640px/>
+
+
+<h2>4.3 coloring the flames using stars</h2>
+
+<p>
+  There is of course one very obvious and integral part missing: color!
+  Fittingly, the approach that is going to help to add color is color temperature.
+  Color temperature is a way to describe a color using the Kelvin temperature scale. 
+  If you are familiar at all with photography you might know that on an overcast day outside
+  it is usually a good idea to set the white balance of your camera to around 4800K.
+  The reason for this is that the sun, like any other star, emits light of a certain color based on its temperature.
+  Behind the atmosphere the sun appears to have a temperature of about 4800K, explaining the camera setting.
+  In any case, the exact color of the light is thus dependent on temperature, which intern is mostly a measure of energy.
+  Hence, we can use the color temperature scale to decide the color of the flames based on some sort of energy value.
+</p>
+
+<p>
+Until now we have only used greyscale values, meaning that the red, green, and blue components of the colors are equal.
+We could therefore arbitrarily choose the float value in the red channel as the representation of energy.
+Finally, a bit of googling gives us this piece of code to help transform kelvin to a 3 component color vector:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kt">vec3</span><span class="w"> </span><span class="n">fromColorTemperature</span><span class="p">(</span><span class="kt">float</span><span class="w"> </span><span class="n">kelvin</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">temp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">kelvin</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">0.01</span><span class="n">f</span><span class="p">;</span>
+<span class="w">    </span><span class="kt">float</span><span class="w"> </span><span class="n">r</span><span class="p">,</span><span class="n">g</span><span class="p">,</span><span class="n">b</span><span class="p">;</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">temp</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">66</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">255</span><span class="p">;</span>
+<span class="w">        </span><span class="n">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">99.4708025861</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">log</span><span class="p">(</span><span class="n">temp</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">161.1195681661</span><span class="p">;</span>
+<span class="w">        </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">temp</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">19</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="mo">0</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="mf">138.5177312231</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">log</span><span class="p">(</span><span class="n">temp</span><span class="o">-</span><span class="mi">10</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mf">305.0447927307</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">r</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">329.698727446</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">pow</span><span class="p">(</span><span class="n">temp</span><span class="o">-</span><span class="mi">60</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mf">0.1332047592</span><span class="p">);</span>
+<span class="w">        </span><span class="n">g</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">288.1221695283</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">pow</span><span class="p">(</span><span class="n">temp</span><span class="o">-</span><span class="mi">60</span><span class="p">,</span><span class="w"> </span><span class="o">-</span><span class="mf">0.0755148492</span><span class="p">);</span>
+<span class="w">        </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">255</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span>
+<span class="w">            </span><span class="n">clamp</span><span class="p">(</span><span class="n">r</span><span class="o">/</span><span class="mf">255.0</span><span class="n">f</span><span class="p">,</span><span class="w"> </span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span>
+<span class="w">            </span><span class="n">clamp</span><span class="p">(</span><span class="n">g</span><span class="o">/</span><span class="mf">255.0</span><span class="n">f</span><span class="p">,</span><span class="w"> </span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">),</span>
+<span class="w">            </span><span class="n">clamp</span><span class="p">(</span><span class="n">b</span><span class="o">/</span><span class="mf">255.0</span><span class="n">f</span><span class="p">,</span><span class="w"> </span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span>
+<span class="w">    </span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<p>
+Since this last step is only used for rendering and would cause problems if it were part of the constantly iterating compute
+shader, we would do best to add this step to fragment shader.
+Furthermore in the main function we simply add one extra line of code to convert the red channel value, interpreted as a temperature,
+to an actual color.
+Of course we have to transform the value a bit to get a get a reasonable value on the kelvin scale.
+The sun is about 5500K so let's get the smoking hot fire up to 7000K why don't we.
+Furthermore, to make the fire a bit more believable we have to ensure that it seems only really hot in the center of a flame but
+quickly gets cooler as we move away. 
+Raising the value to a small power helps achieve this effect.
+Finally, to remove any weird background colors or artifacts we use the red channel once again as a mask by multiplying with it 
+once more.
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kt">void</span><span class="w"> </span><span class="n">main</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">color</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">texture</span><span class="p">(</span><span class="n">tex</span><span class="p">,</span><span class="w"> </span><span class="n">uv</span><span class="p">);</span>
+<span class="w">    </span><span class="n">color</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec4</span><span class="p">(</span><span class="n">fromColorTemperature</span><span class="p">(</span><span class="n">pow</span><span class="p">(</span><span class="n">color</span><span class="p">.</span><span class="n">r</span><span class="p">,</span><span class="mi">6</span><span class="p">)</span><span class="o">*</span><span class="mi">7000</span><span class="p">),</span><span class="mo">0</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<p>
+  You can almost feel the heat can't you?
+</p>
+
+<img src="colored-flames.gif" width:100% max-width:640px />
+
+<h2>4.4 some sideways action for polishing</h2>
+<p>
+  Although we are definitely close to a great result something still feels a bit off.
+  The fire seems to emit a calmness that is more reminiscent of people watching a fire than
+  the fire itself.
+  To add just a little bit of unpredictability in the mix we introduce some random sideways action.
+  We already have calculated an animated point from which we sample the noise, so to get some more, seemingly uncorrelated,
+  noise we take that point and animate away from there.
+  A noise value we sample from there, which we will call 'stride', can be used to store the pixel not only 2 pixels up, 
+  but also randomly to the left or right.  I found that the following parameters give a pretty nice result:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kt">vec3</span><span class="w"> </span><span class="n">noisePoint</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">vec3</span><span class="p">(</span><span class="n">storePosf</span><span class="o">*</span><span class="mi">15</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="kt">vec2</span><span class="p">(</span><span class="mo">0</span><span class="p">,</span><span class="w"> </span><span class="mi">8</span><span class="o">*</span><span class="n">time</span><span class="p">),</span><span class="w"> </span><span class="n">time</span><span class="p">);</span>
+
+<span class="c1">// sample a stride value from a different point in the noise map</span>
+<span class="kt">float</span><span class="w"> </span><span class="n">stride</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">cnoise</span><span class="p">(</span><span class="n">noisePoint</span><span class="o">+</span><span class="kt">vec3</span><span class="p">(</span><span class="n">time</span><span class="p">));</span>
+
+<span class="c1">// Store the pixel up 2 pixels and randomly to the left or the right depending on the stride</span>
+<span class="n">imageStore</span><span class="p">(</span><span class="n">destTex</span><span class="p">,</span><span class="w"> </span><span class="n">storePos</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="kt">ivec2</span><span class="p">(</span><span class="n">stride</span><span class="o">*</span><span class="mi">3</span><span class="p">,</span><span class="mi">2</span><span class="p">),</span><span class="w"> </span><span class="n">newCol</span><span class="p">);</span>
+</pre></div>
+
+</p>
+
+<p>
+  The result is something that feels not only more natural but also more threatening as the moving flames give the illusion of a much
+  more aggressive fire.
+  Similarly, the heat of the fire now becomes visible not only through the colors of the flame but also through an effect called
+  turbulent displacement. 
+  It is that same wiggly motion that air makes above concrete on a hot summer day, or more simply a barbecue.
+</p>
+
+
+<img src="endresult-opt.gif" width:100% max-width=640px/>
+
+<h2>5. Questions?</h2>
+
+<p>
+  Any burning questions? Or just wanna say hi? Feel free to reach out on <a href="https://www.linkedin.com/in/hugopeters1024/" target=_blank>LinkedIn</a> or send me an email at hpeters1024@gmail.com.
+  
+</p>
+
+<img src="question.gif" width:100% max-width:640px />
+
+
+
+    
+    <div id="gitalk-container"></div>
+<script>
+const gitalk = new Gitalk({
+  clientID: "a1da1553c3ddbf769a52",
+  clientSecret: "1ad095f6d5d87b7818859fa8184bd422fca65253",
+  repo: 'blog',      // The repository of store comments,
+  owner: 'HugoPeters1024',
+  admin: ['HugoPeters1024'],
+  id: "8",      // Ensure uniqueness and length less than 50
+  number: "8",
+  distractionFreeMode: false  // Facebook-like distraction free mode
+})
+
+gitalk.render('gitalk-container')
+</script>
+    
+  <div class="modified-at"> 
+    <small>last modified: May 29, 2026 at 11:08</small>
+  </div>
+
+
+    </div>
+  </div>
+
+  
+    <footer>
+    Hugo Peters &middot; hpeters1024@gmail.com &middot; running on a raspberry pi 3b+
+</footer>
+  
+
+</body>
+</html>

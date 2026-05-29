@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+  <script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/public/pygments.css">
+  <link rel="stylesheet" type="text/css" href="/public/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  
+  
+  
+  <link rel="alternate" type="application/rss+xml" title="Hugo's Blog" href="/feed.xml">
+  <link rel="icon" href="/posts/4/logo.png">
+  <title>C# can be functional pt2: Lists are Monads</title>
+</head>
+<body>
+  
+
+  
+    <header>
+    <div class="logo"><a href="/">Hugo's Blog</a></div>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <nav>
+        <a href="/">Home</a>
+        <a href="/posts">Posts</a>
+        <a href="/feed.xml">RSS</a>
+    </nav>
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+</header>
+  
+
+  <div class="content">
+    <div class="content-page">
+    
+  <div class="code-languages">
+    
+    <div class="code-language">C#</div>
+    
+    <div class="code-language">haskell</div>
+    
+  </div>
+  <h1>C# can be functional pt2: Lists are Monads</h1>
+  
+<h2>Preface: the story continues</h2>
+I will start off with a warning that this post is the continuation of
+<a href="/posts/3">C# can be functional pt1: The Maybe Monad</a>. That post explained numerous concepts of 
+functional programming in great detail. Therefore I
+will refrain from the same endeavour in this post, and assume you already have a
+basic understanding of what a Functor, Applicative and a Monad is. The previous progress
+is captured by the overarching repository of this larger endeavour to explore
+functional concepts in C#: <a href="https://github.com/HugoPeters1024/MonadsInCSharp/" target="_blank">repo</a>. Naturally the
+work of this post is also found there; as is denoted in the bottom right corner of relevant
+code snippets.
+
+<h2>The basic class structure</h2>
+<p>
+Functional languages are keen on representing their lists as singly linked lists.
+This discourages the idea of accessing the list randomly since the lookup
+operation now requires linear time as opposed to constant time.  The only sensible
+way of using such a list is by traversing it a from beginning to end.
+</p>
+
+<p>
+An instance of such a list can be one of two things: and empty list, containing
+nothing or a single element (which we will call the head) and another linked
+list as tail (which can be again one of the two). In C# we might write:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">abstract</span><span class="w"> </span><span class="k">class</span><span class="w"> </span><span class="nc">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span>
+<span class="p">{</span>
+<span class="p">}</span>
+
+<span class="k">public</span><span class="w"> </span><span class="k">class</span><span class="w"> </span><span class="nc">Empty</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span>
+<span class="p">{</span>
+<span class="p">}</span>
+
+<span class="k">public</span><span class="w"> </span><span class="k">class</span><span class="w"> </span><span class="nc">Cons</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">public</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="n">Head</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">get</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="k">public</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">Tail</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">get</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+
+<span class="w">  </span><span class="k">public</span><span class="w"> </span><span class="nf">Cons</span><span class="p">(</span><span class="n">T</span><span class="w"> </span><span class="n">head</span><span class="p">,</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">tail</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="k">this</span><span class="p">.</span><span class="n">Head</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">head</span><span class="p">;</span>
+<span class="w">      </span><span class="k">this</span><span class="p">.</span><span class="n">Tail</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">tail</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/SList.cs" target="_blank">full source</a></pre></div>
+</p>
+
+A basic for loop over the list can be done as follows.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="k">void</span><span class="w"> </span><span class="n">PrintAll</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="kt">var</span><span class="w"> </span><span class="n">prev</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">list</span><span class="p">;</span><span class="w"> </span><span class="n">prev</span><span class="w"> </span><span class="k">is</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">el</span><span class="p">;</span><span class="w"> </span><span class="n">prev</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">el</span><span class="p">.</span><span class="n">Tail</span><span class="p">)</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="n">Console</span><span class="p">.</span><span class="n">WriteLine</span><span class="p">(</span><span class="n">el</span><span class="p">.</span><span class="n">Head</span><span class="p">.</span><span class="n">ToString</span><span class="p">());</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Demos/ListDemo.cs" target="_blank">full source</a></pre></div>
+</p>
+</p>
+
+<h2>Basic list operations</h2>
+To both make our lives a bit more easier down the road, as well as to 
+get familiar with our newly found list type, we will define the basic concat
+operation, which simply concatenates two lists.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">concat</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">one</span><span class="p">,</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">two</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="c1">// This is C# 8 syntax, of course it can be done in earlier</span>
+<span class="w">    </span><span class="c1">// versions as well but less elegantly.</span>
+<span class="w">    </span><span class="k">switch</span><span class="w"> </span><span class="p">((</span><span class="n">one</span><span class="p">,</span><span class="w"> </span><span class="n">two</span><span class="p">))</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="p">(</span><span class="n">Empty</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">_</span><span class="p">,</span><span class="w"> </span><span class="n">_</span><span class="p">):</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">two</span><span class="p">;</span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="p">(</span><span class="n">_</span><span class="p">,</span><span class="w"> </span><span class="n">Empty</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">_</span><span class="p">):</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">one</span><span class="p">;</span>
+<span class="w">        </span><span class="k">default</span><span class="p">:</span>
+<span class="w">            </span><span class="kt">var</span><span class="w"> </span><span class="n">left</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">one</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">              </span><span class="n">left</span><span class="p">.</span><span class="n">Head</span><span class="p">,</span>
+<span class="w">              </span><span class="n">left</span><span class="p">.</span><span class="n">Tail</span><span class="p">.</span><span class="n">concat</span><span class="p">(</span><span class="n">two</span><span class="p">));</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/SList.cs" target="_blank">full source</a></pre></div>
+</p>
+
+<h2>Implementing the good stuff</h2>
+As we know by now, the really interesting stuff is yet to be implemented.
+Let's start with all the specifications first, and then reason about their
+semantic meaning.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">fmap</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">,</span><span class="w"> </span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">func</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="c1">// TODO</span>
+<span class="p">}</span>
+
+<span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">ab</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">,</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">arg</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="c1">// TODO</span>
+<span class="p">}</span>
+
+<span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">bind</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">,</span><span class="w"> </span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">func</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="c1">// TODO</span>
+<span class="p">}</span>
+
+<span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">pureSList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="n">T</span><span class="w"> </span><span class="n">el</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="c1">// TODO</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<h3>Fmap makes Functors</h3>
+"To apply a function over this object", that is what <code>fmap</code> does. For maybe
+this could also mean silent rejection in the case of <code>Nothing</code>. With lists it is
+not much different; after all, we cannot apply a function over an empty list. 
+For the non empty list we simply apply the function over the head and then apply
+fmap over the tail recursively to affect the all the elements in the list.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">fmap</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">,</span><span class="w"> </span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">func</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">switch</span><span class="w"> </span><span class="p">(</span><span class="n">list</span><span class="p">)</span>
+<span class="w">  </span><span class="p">{</span>
+<span class="w">      </span><span class="k">case</span><span class="w"> </span><span class="n">Empty</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">_</span><span class="p">:</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Empty</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">();</span>
+<span class="w">      </span><span class="k">case</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">el</span><span class="p">:</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">        </span><span class="n">func</span><span class="p">(</span><span class="n">el</span><span class="p">.</span><span class="n">Head</span><span class="p">),</span>
+<span class="w">        </span><span class="n">fmap</span><span class="p">(</span><span class="n">el</span><span class="p">.</span><span class="n">Tail</span><span class="p">,</span><span class="w"> </span><span class="n">func</span><span class="p">));</span>
+<span class="w">      </span><span class="k">default</span><span class="p">:</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">null</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+
+<span class="c1">// The very useful reflected version</span>
+<span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">fmap</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="w"> </span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">func</span><span class="p">,</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">)</span>
+<span class="w">  </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">.</span><span class="n">fmap</span><span class="p">(</span><span class="n">func</span><span class="p">);</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/SList.cs" target="_blank">full source</a></pre></div>
+</p>
+
+We can now execute basic functions over our lists analogous to a loop.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">Double</span><span class="p">(</span><span class="n">SList</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">list</span><span class="p">.</span><span class="n">fmap</span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// Even changing the list&#39;s containing type</span>
+<span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="kt">string</span><span class="o">&gt;</span><span class="w"> </span><span class="n">ToWord</span><span class="p">(</span><span class="n">SList</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="kt">var</span><span class="w"> </span><span class="n">words</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="kt">string</span><span class="p">[]</span><span class="w"> </span><span class="p">{</span><span class="s">&quot;one&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;two&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;three&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;four&quot;</span><span class="p">};</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="n">list</span><span class="p">.</span><span class="n">fmap</span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">words</span><span class="p">.</span><span class="n">Length</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">words</span><span class="p">[</span><span class="n">x</span><span class="p">]</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="s">&quot;unknown number&quot;</span><span class="p">);</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Demos/ListDemo.cs" target="_blank">full source</a></pre></div>
+</p>
+
+<h3>Ab makes Applicatives</h3>
+"To apply an argument wrapped in an object to an object containing a function." is the sentence
+that one ought to remember when implementing the function that ensures 
+membership of the applicative typeclass. Just like with fmap, repetition is the
+key: we simply apply the given list of arguments to every function in the main list. There
+is however a nuance in the fact that instead of a single function we now get a list of arguments
+for a list of functions but there is no constraint that tells us that these lists are of equal size.
+To resolve this issue we simply consume only the items that have a respective element in the other list.
+Any excess is simply discarded.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">ab</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">,</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">arg</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">switch</span><span class="w"> </span><span class="p">((</span><span class="n">list</span><span class="p">,</span><span class="w"> </span><span class="n">arg</span><span class="p">))</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// Base cases, either list is empty</span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="p">(</span><span class="n">Empty</span><span class="o">&lt;</span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">_</span><span class="p">,</span><span class="w"> </span><span class="n">_</span><span class="p">):</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Empty</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">();</span>
+<span class="w">        </span><span class="k">case</span><span class="w"> </span><span class="p">(</span><span class="n">_</span><span class="p">,</span><span class="w"> </span><span class="n">Empty</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">_</span><span class="p">):</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Empty</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">();</span>
+<span class="w">        </span><span class="c1">// Recursive case, apply argument to function and continue with the tail.</span>
+<span class="w">        </span><span class="k">default</span><span class="p">:</span>
+<span class="w">            </span><span class="kt">var</span><span class="w"> </span><span class="n">funcs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">list</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;&gt;</span><span class="p">;</span>
+<span class="w">            </span><span class="kt">var</span><span class="w"> </span><span class="n">args</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">arg</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span><span class="n">funcs</span><span class="p">.</span><span class="n">Head</span><span class="p">(</span><span class="n">args</span><span class="p">.</span><span class="n">Head</span><span class="p">),</span><span class="w"> </span><span class="n">funcs</span><span class="p">.</span><span class="n">Tail</span><span class="p">.</span><span class="n">ab</span><span class="p">(</span><span class="n">args</span><span class="p">.</span><span class="n">Tail</span><span class="p">));</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/SList.cs" target="_blank">full source</a></pre></div>
+</p>
+
+<h3>Bind and pure and ye shall be a monad</h3>
+"To apply a function to an object except the function returns an instance
+of that same object". Capturing in the workings of bind in that sentence highlights
+its similarity to fmap, except where fmap packages the result back into a functor,
+bind already gets a monad back from its provided function. For the maybe monad this
+was the end of the story, for lists we have a bit more complicated story. If we
+extrapolate the concept of applying the operation to every element in the list we
+end up with a list of lists. This would violate the definition of bind since its
+resulting type is not the same as that of the given function. To settle this discrepancy
+one can employ the help of concat to flatten the list of lists to a normal list again.
+Consider the following steps:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1">-- Function that returns a list with two copies of the argument</span>
+<span class="mi">1</span><span class="o">.</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="ow">=&gt;</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">,</span><span class="n">x</span><span class="p">]</span>
+<span class="c1">-- The input list l1</span>
+<span class="mi">2</span><span class="o">.</span><span class="w"> </span><span class="n">l1</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">]</span><span class="w"> </span>
+<span class="c1">-- Mapping f over l1 to get l2</span>
+<span class="mi">3</span><span class="o">.</span><span class="w"> </span><span class="n">l2</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="p">[[</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">],[</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">],[</span><span class="mi">3</span><span class="p">,</span><span class="mi">3</span><span class="p">]]</span>
+<span class="c1">-- Concatenating l2 to get l3</span>
+<span class="mi">4</span><span class="o">.</span><span class="w"> </span><span class="n">l3</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">3</span><span class="p">]</span>
+</pre></div>
+
+</p>
+
+<p>
+I hear you pondering and yes you are absolutely correct: <code>bind</code> for lists is the
+same as concatenating after mapping, an operation also known as <code>concatMap</code>!
+</p>
+
+<p>
+Us rests one final task before we may call <code>SList</code> a monad and that is to implement
+<code>pure</code>. To complete our set of mnemonics: "To put an item inside an object". For lists
+we could easily think to create a list with one item, a.k.a. a singleton. But we will
+instead set out to derive this nonetheless correct idea from the holy <i>Monad Laws</i>.
+We haven't touched on this before but there are 3 laws monads have to abide by regarding the
+implementation of bind and pure. We will now only focus on 1, namely right identity:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="mi">1</span><span class="o">.</span><span class="w"> </span><span class="kt">Left</span><span class="w"> </span><span class="kt">Identity:</span><span class="w">   </span><span class="p">(</span><span class="n">pure</span><span class="w"> </span><span class="n">a</span><span class="p">)</span><span class="w">     </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="n">f</span><span class="w">        </span><span class="ow">=</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">a</span>
+<span class="mi">2</span><span class="o">.</span><span class="w"> </span><span class="kt">Right</span><span class="w"> </span><span class="kt">Identity:</span><span class="w">   </span><span class="n">m</span><span class="w">           </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="n">pure</span><span class="w">     </span><span class="ow">=</span><span class="w"> </span><span class="n">m</span>
+<span class="mi">3</span><span class="o">.</span><span class="w"> </span><span class="kt">Associativity:</span><span class="w">   </span><span class="p">(</span><span class="n">m</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="n">f</span><span class="p">)</span><span class="w">    </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="n">g</span><span class="w">        </span><span class="ow">=</span><span class="w"> </span><span class="n">m</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="p">(</span><span class="nf">\</span><span class="n">x</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&gt;&gt;=</span><span class="w"> </span><span class="n">g</span><span class="p">)</span>
+</pre></div>
+
+</p>
+
+What right identity tells is that the result of binding the pure function yield
+is identical to the input (such a function is known as an identity function). To return
+to the world of C# the following should hold:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="k">void</span><span class="w"> </span><span class="nf">CheckRightAssociativity</span><span class="p">()</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="kt">var</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">    </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">      </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">        </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Empty</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">())));</span>
+<span class="w">  </span><span class="kt">var</span><span class="w"> </span><span class="n">output</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">input</span><span class="p">.</span><span class="n">bind</span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">x</span><span class="p">.</span><span class="n">pureSList</span><span class="p">());</span>
+<span class="w">  </span><span class="n">Debug</span><span class="p">.</span><span class="n">Assert</span><span class="p">(</span><span class="n">input</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">output</span><span class="p">);</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Demos/ListDemo.cs" target="_blank">full source</a></pre></div>
+</p>
+
+If we write down the steps we can derive what the pure function should yield:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1">-- Input list</span>
+<span class="mi">1</span><span class="o">.</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="o">...</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">]</span>
+<span class="c1">-- Apply the unknown function</span>
+<span class="mi">2</span><span class="o">.</span><span class="w"> </span><span class="p">[</span><span class="n">p</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="n">p</span><span class="p">(</span><span class="mi">2</span><span class="p">),</span><span class="w"> </span><span class="o">...</span><span class="p">,</span><span class="w"> </span><span class="n">p</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+<span class="c1">-- Concatenating the result should yield</span>
+<span class="mi">3</span><span class="o">.</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="o">...</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">]</span>
+<span class="c1">-- Reversing concatenation from 3 to 2 we find (among other possibilities)</span>
+<span class="mi">4</span><span class="o">.</span><span class="w"> </span><span class="p">[</span><span class="n">p</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span><span class="w"> </span><span class="n">p</span><span class="p">(</span><span class="mi">2</span><span class="p">),</span><span class="w"> </span><span class="o">...</span><span class="p">,</span><span class="w"> </span><span class="n">p</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="p">[[</span><span class="mi">1</span><span class="p">],</span><span class="w"> </span><span class="p">[</span><span class="mi">2</span><span class="p">],</span><span class="w"> </span><span class="o">...</span><span class="p">,</span><span class="w"> </span><span class="p">[</span><span class="n">n</span><span class="p">]]</span>
+<span class="c1">-- From that follows</span>
+<span class="mi">5</span><span class="o">.</span><span class="w"> </span><span class="n">forall</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">p</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="p">[</span><span class="n">x</span><span class="p">]</span>
+<span class="c1">-- Therefore is the singleton constructor valid under right identity</span>
+<span class="c1">-- (Note that the other 2 laws should hold as well but I leave that as</span>
+<span class="c1">-- an exercise)</span>
+</pre></div>
+
+</p>
+
+So now the rather trivial implementation is the only thing that awaits us:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">pureSList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="w"> </span><span class="n">T</span><span class="w"> </span><span class="n">item</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="n">item</span><span class="p">,</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Empty</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">());</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/SList.cs" target="_blank">full source</a></pre></div>
+</p>
+
+<h2>Yielding the power</h2>
+If you got to this part you may congratulate yourself, it is quite a pill to swallow.
+In fact, lets celebrate our accomplishments by writing some useful transformations in
+terms of our powerful set of functions. First of all, let's write filter in terms of bind.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">filter</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="k">this</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">,</span><span class="w"> </span><span class="n">Func</span><span class="o">&lt;</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="o">&gt;</span><span class="w"> </span><span class="n">predicate</span><span class="p">)</span>
+<span class="w">    </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">.</span><span class="n">bind</span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">predicate</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="n">x</span><span class="p">.</span><span class="n">pureSList</span><span class="p">()</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Empty</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">());</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Demos/ListDemo.cs" target="_blank">full source</a></pre></div>
+</p>
+
+Also very interesting is the ease with which we can compute the Cartesian product
+of two list:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="p">(</span><span class="n">T</span><span class="p">,</span><span class="n">T</span><span class="p">)</span><span class="o">&gt;</span><span class="w"> </span><span class="n">cartesianProduct</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">(</span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">one</span><span class="p">,</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="n">two</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">one</span><span class="p">.</span><span class="n">bind</span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span>
+<span class="w">      </span><span class="n">two</span><span class="p">.</span><span class="n">bind</span><span class="p">(</span><span class="n">y</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span>
+<span class="w">        </span><span class="k">new</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="p">(</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="p">)</span><span class="o">&gt;</span><span class="p">((</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">),</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Empty</span><span class="o">&lt;</span><span class="p">(</span><span class="n">T</span><span class="p">,</span><span class="w"> </span><span class="n">T</span><span class="p">)</span><span class="o">&gt;</span><span class="p">())));</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Demos/ListDemo.cs" target="_blank">full source</a></pre></div>
+</p>
+
+And while the syntax of both the application and its use may not be very appealing,
+I also present the list comprehension:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">listComprension</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">  </span><span class="k">this</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TIn</span><span class="o">&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">,</span>
+<span class="w">  </span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="n">TOut</span><span class="o">&gt;</span><span class="w"> </span><span class="n">mapping</span><span class="p">,</span>
+<span class="w">  </span><span class="n">Func</span><span class="o">&lt;</span><span class="n">TIn</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="o">&gt;</span><span class="w"> </span><span class="n">predicate</span><span class="p">)</span>
+<span class="w">    </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">list</span><span class="p">.</span><span class="n">bind</span><span class="p">(</span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">predicate</span><span class="p">(</span><span class="n">x</span><span class="p">))</span>
+<span class="w">            </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Cons</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">              </span><span class="n">mapping</span><span class="p">(</span><span class="n">x</span><span class="p">),</span>
+<span class="w">              </span><span class="k">new</span><span class="w"> </span><span class="n">Empty</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">())</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Empty</span><span class="o">&lt;</span><span class="n">TOut</span><span class="o">&gt;</span><span class="p">();</span>
+<span class="w">    </span><span class="p">});</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Demos/ListDemo.cs" target="_blank">full source</a></pre></div>
+</p>
+
+A function that has found popularity in many mainstream languages is zip: it takes
+two lists and returns one new list with tuples containing the respective elements of the
+two lists. for example:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="c1">-- Ideal case, lists are of equal size</span>
+<span class="mi">1</span><span class="o">.</span><span class="w"> </span><span class="n">zip</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="sc">&#39;a&#39;</span><span class="p">,</span><span class="sc">&#39;b&#39;</span><span class="p">,</span><span class="w"> </span><span class="sc">&#39;c&#39;</span><span class="p">]</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="p">[(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="sc">&#39;a&#39;</span><span class="p">),</span><span class="w"> </span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="sc">&#39;b&#39;</span><span class="p">),</span><span class="w"> </span><span class="p">(</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="sc">&#39;c&#39;</span><span class="p">)]</span>
+<span class="c1">-- In case of different size lists, the excess is discarded</span>
+<span class="mi">2</span><span class="o">.</span><span class="w"> </span><span class="n">zip</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="p">[</span><span class="mi">9</span><span class="p">,</span><span class="mi">10</span><span class="p">,</span><span class="mi">11</span><span class="p">]</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="p">[(</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">9</span><span class="p">)]</span>
+</pre></div>
+
+</p>
+
+In haskell you could define zip yourself as follows:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="nf">zip</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">[</span><span class="n">a</span><span class="p">]</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="p">[</span><span class="n">b</span><span class="p">]</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="p">[(</span><span class="n">a</span><span class="p">,</span><span class="n">b</span><span class="p">)]</span>
+<span class="nf">zip</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="p">(,)</span><span class="w"> </span><span class="o">&lt;$&gt;</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">&lt;*&gt;</span><span class="w"> </span><span class="n">y</span>
+<span class="c1">-- Note that (,) is a function of type :: a -&gt; b -&gt; (a,b)</span>
+<span class="c1">-- In other words this is the tuple constructor</span>
+</pre></div>
+
+</p>
+
+But of course nothing can now stop us from doing the exact same in our C# project:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">public</span><span class="w"> </span><span class="k">static</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="p">(</span><span class="n">T1</span><span class="p">,</span><span class="w"> </span><span class="n">T2</span><span class="p">)</span><span class="o">&gt;</span><span class="w"> </span><span class="n">zip</span><span class="o">&lt;</span><span class="n">T1</span><span class="p">,</span><span class="w"> </span><span class="n">T2</span><span class="o">&gt;</span><span class="p">(</span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T1</span><span class="o">&gt;</span><span class="w"> </span><span class="n">one</span><span class="p">,</span><span class="w"> </span><span class="n">SList</span><span class="o">&lt;</span><span class="n">T2</span><span class="o">&gt;</span><span class="w"> </span><span class="n">two</span><span class="p">)</span>
+<span class="p">{</span>
+<span class="w">    </span><span class="n">Func</span><span class="o">&lt;</span><span class="n">T1</span><span class="p">,</span><span class="w"> </span><span class="n">Func</span><span class="o">&lt;</span><span class="n">T2</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="n">T1</span><span class="p">,</span><span class="w"> </span><span class="n">T2</span><span class="p">)</span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="n">mkTuple</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">);</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">mkTuple</span><span class="p">.</span><span class="n">fmap</span><span class="p">(</span><span class="n">one</span><span class="p">).</span><span class="n">ab</span><span class="p">(</span><span class="n">two</span><span class="p">);</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/MonadsInCSharp/blob/master/MondadsInCsharp/Demos/ListDemo.cs" target="_blank">full source</a></pre></div>
+</p>
+
+
+<h2>Summary</h2>
+We have constructed the singly linked list in C# and made it no less than a Functor,
+Applicative, and a Monad. We did this using some newly established mnemonics:
+
+<ul>
+  <li><code>fmap</code> applies a given function to the contents of an object</li>
+  <li><code>ab</code> applies a given argument (wrapped in an object) to a function inside another object</li>
+  <li><code>bind</code> transforms the object by feeding its content to the given function</li>
+  <li><code>pure</code> wraps a regular value inside an object (whilst adhering to the 3 monad laws)</li>
+</ul>
+
+Finally we have shortly seen how these functions can be utilized and combined to implement
+more complicated functions in an intuitive, bug resistant manner.
+
+
+
+    
+    <div id="gitalk-container"></div>
+<script>
+const gitalk = new Gitalk({
+  clientID: "a1da1553c3ddbf769a52",
+  clientSecret: "1ad095f6d5d87b7818859fa8184bd422fca65253",
+  repo: 'blog',      // The repository of store comments,
+  owner: 'HugoPeters1024',
+  admin: ['HugoPeters1024'],
+  id: "4",      // Ensure uniqueness and length less than 50
+  number: "4",
+  distractionFreeMode: false  // Facebook-like distraction free mode
+})
+
+gitalk.render('gitalk-container')
+</script>
+    
+  <div class="modified-at"> 
+    <small>last modified: May 29, 2026 at 11:08</small>
+  </div>
+
+
+    </div>
+  </div>
+
+  
+    <footer>
+    Hugo Peters &middot; hpeters1024@gmail.com &middot; running on a raspberry pi 3b+
+</footer>
+  
+
+</body>
+</html>

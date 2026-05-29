@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+  <script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/public/pygments.css">
+  <link rel="stylesheet" type="text/css" href="/public/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  
+  
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['\\(', '\\)']]
+  }
+};
+</script>
+<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-MML-AM_CHTML"> </script>
+
+  <link rel="alternate" type="application/rss+xml" title="Hugo's Blog" href="/feed.xml">
+  <link rel="icon" href="/posts/20/favicon.png">
+  <title>MADS</title>
+</head>
+<body>
+  
+
+  
+    <header>
+    <div class="logo"><a href="/">Hugo's Blog</a></div>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <nav>
+        <a href="/">Home</a>
+        <a href="/posts">Posts</a>
+        <a href="/feed.xml">RSS</a>
+    </nav>
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+</header>
+  
+
+  <div class="content">
+    <div class="content-page">
+    
+  <div class="code-languages">
+    
+    <div class="code-language">Rust</div>
+    
+  </div>
+  <h1>MADS</h1>
+  
+
+<h2>The rules</h2>
+
+M.A.D.S (Multiply, Add, Subtract, Divide) is a simple task that uses just basic arithmetic.
+Given two integers x and y, you need to find the least number steps from x to y 
+using a set of operations. This may or not have been a homework assignment of a friend of mine,
+whose identity I shall protect (It goes without saying that I did not do his homework...).
+Anyway, in just like in the assignment, we will only be using the following operations:
+
+<ul>
+  <li>Add one</li>
+  <li>Subtract one</li>
+  <li>Divide by 2</li>
+  <li>Divide by 3</li>
+  <li>Multiply by 5</li>
+</ul>
+
+<p>
+  Note that division operations are only allowed to have integer results,
+  in other words we may only divide by \(d\) if \(x = kd\).
+</p>
+
+<p>
+  Let's see an example:
+  <ul>
+    <li>\(x = 100, y =  51\)</li>
+    <li>\(x \leftarrow x/2\)</li>
+    <li>\(x \leftarrow x + 1\)</li>
+    <li>\(x = 51 = y\)</li>
+    <li>done in 2 steps!</li>
+  </ul>
+</p>
+
+So now our goal is to implement an algorithm that can solve this as efficiently
+as possible for any x and y. We will be doing that in rust because it is rapidly
+becoming my favourite imperative language as a result of its sane syntax, amazing
+tooling, and uncompromising performance.
+
+<h2>A lemma</h2>
+
+Because the rules include \(+1\) and \(-1\), it trivially follows from induction
+that there always is a solution 
+(just keep adding or subtracting 1 until you are done). This solution costs \(|x-y|\) steps,
+which is thus an upper bound to the number of steps required to solve the problem.
+
+<h2>Estimating the size of search space</h2>
+
+<p>
+  If we naively search every possible number, how many numbers do we have to plow through?
+  Well we have to keep searching until we find our solution. At every turn we create
+  5 new numbers which each spawn 5 more until we have found y after
+  repeating this process to a depth of our solution s. This means that our search
+  space is bounded by \(O(5^{s})\).
+</p>
+
+<p>
+  However, we can actually be a bit more precise because the division operations
+  are not always legal. We only divide by 2 half of the time and divide
+  by 3 a third of the time. So the search space is 'only' \(O((3\frac{5}{6})^s)\).
+</p>
+
+<h2>Modelling the problem as a graph</h2>
+
+<p>
+  If we consider to problem to be a graph problem, by interpreting each number as a node with
+  up to 5 outgoing edges to other numbers, we can call upon the battle tested,
+  and famous algorithm of Dijkstra: Dijkstra's shortest path.
+</p>
+
+<figure> <img src="graphviz.svg" alt="graphviz"> </figure>
+
+
+<p>
+  Since we are only interested in the shortest number of operations, and do not 
+  actually care which operations, we simply assign a cost of 1 to each edge.
+  If you are already familiar with Breadth First Search, then you might understand
+  Dijkstra as simply Breadth First Search using a priority queue. But since every
+  edge incurs a cost of precisely one, we will actually never need the priority
+  property and Dijkstra simplifies to just BFS.
+</p>
+
+<h2>Implementation 1: Just BFS</h2>
+
+We simply do a BFS using a work queue, containing pairs of a number and the
+number of steps taken to get there. Besides keeping track of the amount of time
+spent, we also keep track of the number of nodes we visit using the variable <code>ticks</code>.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">use</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">collections</span><span class="p">::</span><span class="n">VecDeque</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">time</span><span class="p">::</span><span class="n">Instant</span><span class="p">;</span>
+
+<span class="k">fn</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">X</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">400</span><span class="p">;</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">Y</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">410</span><span class="p">;</span><span class="w"> </span>
+<span class="w">    </span><span class="n">bfs</span><span class="p">(</span><span class="n">X</span><span class="p">,</span><span class="w"> </span><span class="n">Y</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="k">fn</span><span class="w"> </span><span class="nf">bfs</span><span class="p">(</span><span class="n">x</span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">start</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instant</span><span class="p">::</span><span class="n">now</span><span class="p">();</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">work</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nc">VecDeque</span><span class="o">&lt;</span><span class="p">(</span><span class="kt">u32</span><span class="p">,</span><span class="w"> </span><span class="kt">u32</span><span class="p">)</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">VecDeque</span><span class="p">::</span><span class="n">from</span><span class="p">([(</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)]);</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">ticks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">((</span><span class="n">value</span><span class="p">,</span><span class="n">nr_steps</span><span class="p">))</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">pop_front</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">ticks</span><span class="w"> </span><span class="o">+=</span><span class="mi">1</span><span class="p">;</span>
+
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="fm">println!</span><span class="p">(</span><span class="s">&quot;BFS: answer is {} in {} ticks or {:?}&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="p">,</span><span class="w"> </span><span class="n">ticks</span><span class="p">,</span><span class="w"> </span><span class="n">start</span><span class="p">.</span><span class="n">elapsed</span><span class="p">());</span>
+<span class="w">            </span><span class="k">break</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">));</span><span class="w"> </span><span class="p">}</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">/</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">));</span><span class="w"> </span><span class="p">}</span>
+<span class="w">        </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">));</span>
+<span class="w">        </span><span class="c1">// prevents overflow</span>
+<span class="w">        </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">));</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="kt">u32</span><span class="p">::</span><span class="n">MAX</span><span class="o">/</span><span class="mi">5</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">*</span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">));</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/mads/blob/master/src/main.rs" target="_blank">full source</a></pre></div>
+</p>
+
+We enter 400 and 410 as our start and end points and get the following output after
+running in release mode.                  
+
+<p>
+    <div class="highlight"><pre><span></span>BFS: answer is 8 in 16600 ticks or 282.945µs
+</pre></div>
+
+</p>
+
+There is a major problem with this approach, which is that we visit the same node multiple times.
+During our search we may keep adding and subtracting 1, making no meaningful progress. We can prune
+the search space by capitalizing on the fact that if we ever visit a number we have already seen after <code>n</code> steps, we know
+a fact that we can reach this number in at most <code>n</code> steps already, and thus we can prune this branch of the search tree.
+
+<h2>Implementation 2: BFS with pruning</h2>
+
+Very similar to the first implementation, with the exception that we keep track of visited nodes
+using a hashset. In the while loop we can then first check if this node has been visited before, and if so
+we can skip it.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">use</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">collections</span><span class="p">::</span><span class="n">VecDeque</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">collections</span><span class="p">::</span><span class="n">HashSet</span><span class="p">;</span>
+<span class="k">use</span><span class="w"> </span><span class="n">std</span><span class="p">::</span><span class="n">time</span><span class="p">::</span><span class="n">Instant</span><span class="p">;</span>
+
+<span class="k">fn</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">X</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">400</span><span class="p">;</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">Y</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">410</span><span class="p">;</span><span class="w"> </span>
+<span class="w">    </span><span class="n">bfs</span><span class="p">(</span><span class="n">X</span><span class="p">,</span><span class="w"> </span><span class="n">Y</span><span class="p">);</span>
+<span class="w">    </span><span class="n">bfs_pruned</span><span class="p">(</span><span class="n">X</span><span class="p">,</span><span class="w"> </span><span class="n">Y</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="k">fn</span><span class="w"> </span><span class="nf">bfs_pruned</span><span class="p">(</span><span class="n">x</span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">start</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instant</span><span class="p">::</span><span class="n">now</span><span class="p">();</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">work</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nc">VecDeque</span><span class="o">&lt;</span><span class="p">(</span><span class="kt">u32</span><span class="p">,</span><span class="w"> </span><span class="kt">u32</span><span class="p">)</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">VecDeque</span><span class="p">::</span><span class="n">from</span><span class="p">([(</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)]);</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">visited</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nc">HashSet</span><span class="o">&lt;</span><span class="kt">u32</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">HashSet</span><span class="p">::</span><span class="n">new</span><span class="p">();</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">ticks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">((</span><span class="n">value</span><span class="p">,</span><span class="n">nr_steps</span><span class="p">))</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">pop_front</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">ticks</span><span class="w"> </span><span class="o">+=</span><span class="mi">1</span><span class="p">;</span>
+
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">visited</span><span class="p">.</span><span class="n">contains</span><span class="p">(</span><span class="o">&amp;</span><span class="n">value</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">continue</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+<span class="w">        </span><span class="n">visited</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">value</span><span class="p">);</span>
+
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="fm">println!</span><span class="p">(</span><span class="s">&quot;BFS_pruned: answer is {} in {} ticks or {:?}&quot;</span><span class="p">,</span>
+<span class="w">              </span><span class="n">nr_steps</span><span class="p">,</span><span class="w"> </span><span class="n">ticks</span><span class="p">,</span><span class="w"> </span><span class="n">start</span><span class="p">.</span><span class="n">elapsed</span><span class="p">());</span>
+<span class="w">            </span><span class="k">break</span><span class="p">;</span>
+<span class="w">        </span><span class="p">}</span>
+
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">));</span><span class="w"> </span><span class="p">}</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">/</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">));</span><span class="w"> </span><span class="p">}</span>
+<span class="w">        </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">));</span>
+<span class="w">        </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">));</span>
+<span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="kt">u32</span><span class="p">::</span><span class="n">MAX</span><span class="o">/</span><span class="mi">5</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">*</span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">));</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/mads/blob/master/src/main.rs" target="_blank">full source</a></pre></div>
+</p>
+
+This significantly decreases the amount of numbers checked and consequently the time it takes to run.
+
+<p>
+    <div class="highlight"><pre><span></span>BFS_pruned: answer is 8 in 3362 ticks or 189.221µs
+</pre></div>
+
+</p>
+
+We reduced the amount of work performed by a factor of 5, but performance only increased by a factor of 1.5
+due to the overhead of the hashset. We can expect this overhead to be less significant for inputs with a larger
+solution.
+
+<h2>Implementation 3: Simultaneous BFS with pruning</h2>
+
+<p>
+  There is a very important insight to be made here. We already know what number we are looking for.
+  We could - if we wanted - invert the problem by starting at y and inverting all the operations. This
+  in itself does not yield any benefit. However, if we start at both the start AND the end point, we can
+  expect to meet in the middle! What this allows us to do is reduce the search space to \(O((3\frac{5}{6})^\frac{s}{2})\).
+  We are effectively left with a search space of only the square root of the original search space!
+</p>
+
+To facilitate this bidirectional search, we create a direction enum, so that we can keep track of which
+side of the search we are on in our shared work queue. We also keep track of two separate visited collections,
+but now with a key value pair where the value indicates the number of steps taken to get to that node.
+So if we now arrive at a certain node in 5 steps, and discover that the visisted collection of the opposite
+direction can reach this number in 6 steps, we can conclude that by taking those 6 steps in reverse we can reach
+y, and simply report 5+6 as our final answer.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="cp">#[derive(PartialEq, Clone)]</span>
+<span class="k">enum</span><span class="w"> </span><span class="nc">Direction</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">Forward</span><span class="p">,</span>
+<span class="w">    </span><span class="n">Backward</span><span class="p">,</span>
+<span class="p">}</span>
+
+<span class="k">fn</span><span class="w"> </span><span class="nf">bfs_simul</span><span class="p">(</span><span class="n">x</span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">:</span><span class="w"> </span><span class="kt">u32</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">start</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Instant</span><span class="p">::</span><span class="n">now</span><span class="p">();</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">work</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nc">VecDeque</span><span class="o">&lt;</span><span class="p">(</span><span class="kt">u32</span><span class="p">,</span><span class="w"> </span><span class="kt">u32</span><span class="p">,</span><span class="w"> </span><span class="n">Direction</span><span class="p">)</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span>
+<span class="w">      </span><span class="n">VecDeque</span><span class="p">::</span><span class="n">from</span><span class="p">([(</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">Direction</span><span class="p">::</span><span class="n">Forward</span><span class="p">),</span><span class="w"> </span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">Direction</span><span class="p">::</span><span class="n">Backward</span><span class="p">)]);</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">forward_visited</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nc">HashMap</span><span class="o">&lt;</span><span class="kt">u32</span><span class="p">,</span><span class="w"> </span><span class="kt">u32</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">HashMap</span><span class="p">::</span><span class="n">new</span><span class="p">();</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">backward_visited</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nc">HashMap</span><span class="o">&lt;</span><span class="kt">u32</span><span class="p">,</span><span class="w"> </span><span class="kt">u32</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">HashMap</span><span class="p">::</span><span class="n">new</span><span class="p">();</span>
+
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">ticks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">((</span><span class="n">value</span><span class="p">,</span><span class="n">nr_steps</span><span class="p">,</span><span class="n">dir</span><span class="p">))</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">pop_front</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="n">ticks</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
+
+<span class="w">        </span><span class="k">match</span><span class="w"> </span><span class="n">dir</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="n">Direction</span><span class="p">::</span><span class="n">Forward</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">backward_visited</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="o">&amp;</span><span class="n">value</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="fm">println!</span><span class="p">(</span><span class="s">&quot;BFS_simul: answer is {} in {} ticks or {:?}&quot;</span><span class="p">,</span>
+<span class="w">                      </span><span class="n">nr_steps</span><span class="o">+</span><span class="n">nt</span><span class="p">,</span><span class="w"> </span><span class="n">ticks</span><span class="p">,</span><span class="w"> </span><span class="n">start</span><span class="p">.</span><span class="n">elapsed</span><span class="p">());</span>
+<span class="w">                    </span><span class="k">break</span><span class="p">;</span>
+<span class="w">                </span><span class="p">}</span>
+
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="n">forward_visited</span><span class="p">.</span><span class="n">contains_key</span><span class="p">(</span><span class="o">&amp;</span><span class="n">value</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="k">continue</span><span class="p">;</span>
+<span class="w">                </span><span class="p">}</span>
+
+<span class="w">                </span><span class="n">forward_visited</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="p">);</span>
+
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">dir</span><span class="p">.</span><span class="n">clone</span><span class="p">()));</span><span class="w"> </span><span class="p">}</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">3</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">/</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">dir</span><span class="p">.</span><span class="n">clone</span><span class="p">()));</span><span class="w"> </span><span class="p">}</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="kt">u32</span><span class="p">::</span><span class="n">MAX</span><span class="o">/</span><span class="mi">5</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">*</span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">dir</span><span class="p">.</span><span class="n">clone</span><span class="p">()));</span><span class="w"> </span><span class="p">}</span>
+<span class="w">                </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">dir</span><span class="p">.</span><span class="n">clone</span><span class="p">()));</span>
+<span class="w">                </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">dir</span><span class="p">.</span><span class="n">clone</span><span class="p">()));</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">            </span><span class="n">Direction</span><span class="p">::</span><span class="n">Backward</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="kd">let</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">forward_visited</span><span class="p">.</span><span class="n">get</span><span class="p">(</span><span class="o">&amp;</span><span class="n">value</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="fm">println!</span><span class="p">(</span><span class="s">&quot;BFS_simul: answer is {} in {} ticks or {:?}&quot;</span><span class="p">,</span>
+<span class="w">                      </span><span class="n">nr_steps</span><span class="o">+</span><span class="n">nt</span><span class="p">,</span><span class="w"> </span><span class="n">ticks</span><span class="p">,</span><span class="w"> </span><span class="n">start</span><span class="p">.</span><span class="n">elapsed</span><span class="p">());</span>
+<span class="w">                    </span><span class="k">break</span><span class="p">;</span>
+<span class="w">                </span><span class="p">}</span>
+
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="n">backward_visited</span><span class="p">.</span><span class="n">contains_key</span><span class="p">(</span><span class="o">&amp;</span><span class="n">value</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                    </span><span class="k">continue</span><span class="p">;</span>
+<span class="w">                </span><span class="p">}</span>
+
+<span class="w">                </span><span class="n">backward_visited</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="p">);</span>
+
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="mi">5</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">/</span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">dir</span><span class="p">.</span><span class="n">clone</span><span class="p">()));</span><span class="w"> </span><span class="p">}</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="kt">u32</span><span class="p">::</span><span class="n">MAX</span><span class="o">/</span><span class="mi">2</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">*</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">dir</span><span class="p">.</span><span class="n">clone</span><span class="p">()));</span><span class="w"> </span><span class="p">}</span>
+<span class="w">                </span><span class="k">if</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="kt">u32</span><span class="p">::</span><span class="n">MAX</span><span class="o">/</span><span class="mi">3</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">*</span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">dir</span><span class="p">.</span><span class="n">clone</span><span class="p">()));</span><span class="w"> </span><span class="p">}</span>
+<span class="w">                </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">dir</span><span class="p">.</span><span class="n">clone</span><span class="p">()));</span>
+<span class="w">                </span><span class="n">work</span><span class="p">.</span><span class="n">push_back</span><span class="p">((</span><span class="n">value</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">nr_steps</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">dir</span><span class="p">.</span><span class="n">clone</span><span class="p">()));</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre><a class="source" href="https://github.com/HugoPeters1024/mads/blob/master/src/main.rs" target="_blank">full source</a></pre></div>
+</p>
+
+We receive our answer in a much more timely fashion.
+
+<p>
+    <div class="highlight"><pre><span></span>BFS_simul: answer is 8 in 299 ticks or 27.73µs
+</pre></div>
+
+</p>
+
+<h2>Turning up the heat</h2>
+
+Thus far we have been working with a relatively small example. Let's see how our implementations perform
+with an x, y pair that is a bit further apart. Through random experimentation I have found that x = 32432, y = 2310024
+lie 20 steps apart. Tragically, the naive implementation crashes because it runs out of memory. We can still compare
+BFS_pruned to BFS_simul:
+
+<p>
+    <div class="highlight"><pre><span></span>BFS_pruned: answer is 20 in 32042670 ticks or 2.742120725s                                                                                                                                                                        
+BFS_simul: answer is 20 in 83995 ticks or 4.676884ms
+</pre></div>
+
+</p>
+
+As you can see, simultaneous BFS does about 380 times less work and completes that work in about 586th of the time!
+I am now satisfied with the performance of the algorithm and consider it to be a success.
+Thanks for coming along :)
+
+
+
+
+    
+    <div id="gitalk-container"></div>
+<script>
+const gitalk = new Gitalk({
+  clientID: "a1da1553c3ddbf769a52",
+  clientSecret: "1ad095f6d5d87b7818859fa8184bd422fca65253",
+  repo: 'blog',      // The repository of store comments,
+  owner: 'HugoPeters1024',
+  admin: ['HugoPeters1024'],
+  id: "20",      // Ensure uniqueness and length less than 50
+  number: "20",
+  distractionFreeMode: false  // Facebook-like distraction free mode
+})
+
+gitalk.render('gitalk-container')
+</script>
+    
+  <div class="modified-at"> 
+    <small>last modified: May 29, 2026 at 11:08</small>
+  </div>
+
+
+    </div>
+  </div>
+
+  
+    <footer>
+    Hugo Peters &middot; hpeters1024@gmail.com &middot; running on a raspberry pi 3b+
+</footer>
+  
+
+</body>
+</html>

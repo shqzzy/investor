@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.css">
+  <script src="https://cdn.jsdelivr.net/npm/gitalk@1/dist/gitalk.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/public/pygments.css">
+  <link rel="stylesheet" type="text/css" href="/public/style.css">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Ubuntu">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  
+  
+  
+  <link rel="alternate" type="application/rss+xml" title="Hugo's Blog" href="/feed.xml">
+  <link rel="icon" href="/posts/14/hkt.png">
+  <title>Higher Kinded Types in Rust</title>
+</head>
+<body>
+  
+
+  
+    <header>
+    <div class="logo"><a href="/">Hugo's Blog</a></div>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle">
+    <nav>
+        <a href="/">Home</a>
+        <a href="/posts">Posts</a>
+        <a href="/feed.xml">RSS</a>
+    </nav>
+    <label for="nav-toggle" class="nav-toggle-label">
+        <span></span>
+    </label>
+</header>
+  
+
+  <div class="content">
+    <div class="content-page">
+    
+  <div class="code-languages">
+    
+    <div class="code-language">rust</div>
+    
+  </div>
+  <h1>Higher Kinded Types in Rust</h1>
+  
+
+<img src="hkt.png" alt="Option wearing a crown" style="max-width:100%">
+
+<h2>Introduction</h2>
+
+<p>
+    Recently I have finally taken it upon myself to start learning rust. In the process of writing a vulkan raytracer in C++ I got so
+    incredibly fed up with its tedious memory management, header/source duplication, and most of all bad IDE tooling, that
+    I had to find something better. Rust had been the common subject of chatter around me and so I decided to see what all 
+    the fuss was about.
+</p>
+
+<p>
+    The first thing I noticed was that the tooling was incredibly effective and simple to set up. Never before had it taken me
+    that little time to add a new language server to my Neovim setup. Moreover, the speed and helpfulness is amazing.
+</p>
+
+<p>
+    Hello world and printing some prime numbers came and went quickly. Time to mess around with some feature that caught my
+    eye: associated types. Is rust the best of haskell and c++ together? Let's see if we can make our beloved Functor, Applicative,
+    Monad hierarchy is this new world.
+</p>
+
+<p>
+    I have to mention first of all this <a target=_blank href="https://gist.github.com/edmundsmith/855fcf0cb35dd467c29a9350481f0ecf">post by Edmund Smith</a> from whom I've stolen a few core
+    traits needed to make this work. But I believe that in the end I ended up with a simpler, more elegant solution and
+    therefore I think this post adds something to the discussion.
+</p>
+
+<h2>Higher kinded types</h2>
+
+<p>
+    The first thing we need to realize is that a Functor is not defined over a traditional 'complete' type. Instead it is defined
+    over a type with kind <code>* -> *</code>. An example would be <code>Maybe</code>, or as Rustians like to call it: <code>Option</code>. Take a look at the definition
+    of Functor in haskell
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="kr">class</span><span class="w"> </span><span class="kt">Functor</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="kr">where</span>
+<span class="w">    </span><span class="n">fmap</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">b</span>
+</pre></div>
+
+</p>
+
+<p>
+We expect f to be type to which we can still apply another type. And there lies our first problem, we lack this ability in Rust.
+There are proposals to add this functionality and whilst certainly not trivial, there seems to be little reason to suspect
+that this feature will conflict with the core language principles.
+</p>
+
+<p>
+However, for the time being we need to hack it in ourselves. Copying from Edmund, I've decided upon two traits that just implement
+the associated type magic needed for our purposes. You see, at no time do we actually need the unapplied, generic <code>Option</code> type, as long as we can convert an <code>Option&lt;A&gt;</code> to an <code>Option&lt;B&gt;</code>
+</p>
+
+<p>
+For comparison, here is how we build our needed types in haskell:
+</p>
+
+<img src="normal.svg" alt="type building haskell">
+
+<p>
+And this is how we are going to do it in rust:
+</p>
+<img src="rust.svg" alt="type building in rust">
+
+<h2>Administrative traits: Generic1 and Plug</h2>
+
+<p>
+    To facilitate said type construction/destructing, we need two administrative traits with an associated type. Users need to 
+    implement these traits on their types before they can start making implementing any other traits that operate on higher
+    kinded types.
+</p>
+
+<p>
+The first of these is <code>Generic1</code>, which allows us to take the <code>A</code> out of <code>Option&lt;A&gt;</code>, or rather the type (I)nside:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">trait</span><span class="w"> </span><span class="n">Generic1</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">type</span><span class="w"> </span><span class="nc">I</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">impl</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;</span><span class="w"> </span><span class="n">Generic1</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">type</span><span class="w"> </span><span class="nc">I</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">A</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<p>
+Secondly, we need a way to replace the inner type of <code>Option</code>. We do that using the trait <code>Plug</code>:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">trait</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">type</span><span class="w"> </span><span class="nc">R</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">impl</span><span class="o">&lt;</span><span class="n">A</span><span class="p">,</span><span class="w"> </span><span class="n">B</span><span class="o">&gt;</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">type</span><span class="w"> </span><span class="nc">R</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1">// In other words</span>
+<span class="c1">// &lt;Option&lt;A&gt; as Plug&lt;B&gt;&gt;::R == Option&lt;B&gt;</span>
+</pre></div>
+
+</p>
+
+Note that we have to trust the user here to correctly implement these traits in order to actually get a correct implementation of the upcoming traits.
+But more tragically, the typechecker is now blissfully unaware that the resulting type is still an instance of <code>Option</code>, making it often impossible to derive
+the types of expressions.
+
+<h2>Functor</h2>
+
+With the type management traits in place, we can define and implement the <code>Functor</code> trait quite easily, albeit syntactically a bit
+of a mess.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">trait</span><span class="w"> </span><span class="n">Functor</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">fmap</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">dyn</span><span class="w"> </span><span class="nb">Fn</span><span class="p">(</span><span class="o">&amp;&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Generic1</span><span class="o">&gt;</span><span class="p">::</span><span class="n">I</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">B</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="o">&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;&gt;</span><span class="p">::</span><span class="n">R</span>
+<span class="w">        </span><span class="k">where</span><span class="w"> </span><span class="bp">Self</span><span class="p">:</span><span class="w"> </span><span class="nc">Plug</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">Generic1</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">impl</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;</span><span class="w"> </span><span class="n">Functor</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">fmap</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">dyn</span><span class="w"> </span><span class="nb">Fn</span><span class="p">(</span><span class="o">&amp;&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Generic1</span><span class="o">&gt;</span><span class="p">::</span><span class="n">I</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">B</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="o">&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;&gt;</span><span class="p">::</span><span class="n">R</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// Apply the function over the contained value, if there is one</span>
+<span class="w">        </span><span class="k">match</span><span class="w"> </span><span class="bp">self</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nb">None</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nb">None</span><span class="p">,</span>
+<span class="w">            </span><span class="nb">Some</span><span class="p">(</span><span class="n">v</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="n">v</span><span class="p">)),</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<h1>Applicative</h1>
+
+This one is arguably the ugliest to look at. For clarity, let me also give you the much more sane haskellian type signature for
+the function ap:
+
+<p>
+    <div class="highlight"><pre><span></span><span class="p">(</span><span class="o">&lt;*&gt;</span><span class="p">)</span><span class="w"> </span><span class="ow">::</span><span class="w"> </span><span class="kt">Applicative</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="ow">=&gt;</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">b</span><span class="p">)</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="ow">-&gt;</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="n">b</span>
+</pre></div>
+
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">trait</span><span class="w"> </span><span class="n">Applicative</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">ap</span><span class="o">&lt;</span><span class="n">A</span><span class="p">,</span><span class="w"> </span><span class="n">B</span><span class="p">,</span><span class="w"> </span><span class="n">F</span><span class="p">:</span><span class="w"> </span><span class="nb">Fn</span><span class="p">(</span><span class="o">&amp;</span><span class="n">A</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">B</span><span class="o">&gt;</span><span class="p">(</span><span class="n">x</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="o">&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">F</span><span class="o">&gt;&gt;</span><span class="p">::</span><span class="n">R</span><span class="p">,</span><span class="w"> </span><span class="n">arg</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="o">&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;&gt;</span><span class="p">::</span><span class="n">R</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="o">&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;&gt;</span><span class="p">::</span><span class="n">R</span>
+<span class="w">        </span><span class="k">where</span><span class="w"> </span><span class="bp">Self</span><span class="p">:</span><span class="w"> </span><span class="nc">Plug</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">F</span><span class="o">&gt;</span><span class="p">;</span>
+
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">pure</span><span class="p">(</span><span class="n">x</span><span class="p">:</span><span class="w"> </span><span class="nc">Self</span><span class="p">::</span><span class="n">I</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Self</span>
+<span class="w">        </span><span class="k">where</span><span class="w"> </span><span class="bp">Self</span><span class="p">:</span><span class="w"> </span><span class="nc">Generic1</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">impl</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;</span><span class="w"> </span><span class="n">Applicative</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">pure</span><span class="p">(</span><span class="n">x</span><span class="p">:</span><span class="w"> </span><span class="o">&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Generic1</span><span class="o">&gt;</span><span class="p">::</span><span class="n">I</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Self</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nb">Some</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">ap</span><span class="o">&lt;</span><span class="n">A2</span><span class="p">,</span><span class="n">B</span><span class="p">,</span><span class="n">F</span><span class="p">:</span><span class="w"> </span><span class="nb">Fn</span><span class="p">(</span><span class="o">&amp;</span><span class="n">A2</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">B</span><span class="o">&gt;</span><span class="p">(</span><span class="n">x</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="o">&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">F</span><span class="o">&gt;&gt;</span><span class="p">::</span><span class="n">R</span><span class="p">,</span><span class="w"> </span><span class="n">arg</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="o">&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">A2</span><span class="o">&gt;&gt;</span><span class="p">::</span><span class="n">R</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="o">&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;&gt;</span><span class="p">::</span><span class="n">R</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">match</span><span class="w"> </span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">arg</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="p">(</span><span class="nb">None</span><span class="p">,</span><span class="w"> </span><span class="n">_</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nb">None</span><span class="p">,</span>
+<span class="w">            </span><span class="p">(</span><span class="n">_</span><span class="p">,</span><span class="w"> </span><span class="nb">None</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nb">None</span><span class="p">,</span>
+<span class="w">            </span><span class="p">(</span><span class="nb">Some</span><span class="p">(</span><span class="n">f</span><span class="p">),</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">v</span><span class="p">))</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<h2>Monad</h2>
+And finally, Monad, in the case of Option this will be very similar to Functor. The only difference is the lack of necessity to wrap
+the result in a Some, since that is now the responsibility of the provided function.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">trait</span><span class="w"> </span><span class="n">Monad</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">bind</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">dyn</span><span class="w"> </span><span class="nb">Fn</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">Self</span><span class="p">::</span><span class="n">I</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Self</span><span class="p">::</span><span class="n">R</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nc">Self</span><span class="p">::</span><span class="n">R</span><span class="w"> </span>
+<span class="w">        </span><span class="k">where</span><span class="w"> </span><span class="bp">Self</span><span class="p">:</span><span class="w"> </span><span class="nc">Plug</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">Generic1</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="k">impl</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;</span><span class="w"> </span><span class="n">Monad</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">fn</span><span class="w"> </span><span class="nf">bind</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;</span><span class="p">(</span><span class="o">&amp;</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">:</span><span class="w"> </span><span class="kp">&amp;</span><span class="nc">dyn</span><span class="w"> </span><span class="nb">Fn</span><span class="p">(</span><span class="o">&amp;&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Generic1</span><span class="o">&gt;</span><span class="p">::</span><span class="n">I</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="o">&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;&gt;</span><span class="p">::</span><span class="n">R</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="o">&lt;</span><span class="bp">Self</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Plug</span><span class="o">&lt;</span><span class="n">B</span><span class="o">&gt;&gt;</span><span class="p">::</span><span class="n">R</span><span class="w"> </span><span class="p">{</span><span class="w"> </span>
+<span class="w">        </span><span class="k">match</span><span class="w"> </span><span class="bp">self</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nb">None</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="nb">None</span><span class="p">,</span>
+<span class="w">            </span><span class="nb">Some</span><span class="p">(</span><span class="n">v</span><span class="p">)</span><span class="w"> </span><span class="o">=&gt;</span><span class="w"> </span><span class="n">f</span><span class="p">(</span><span class="n">v</span><span class="p">),</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<h2>Using it (warning: brain damage)</h2>
+
+Let see if we can actually write some code using our new traits. Note that the following snippet has as little type signatures
+as possible whilst being a valid rust program.
+
+<p>
+    <div class="highlight"><pre><span></span><span class="k">fn</span><span class="w"> </span><span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">x</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="mi">5</span><span class="p">);</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">y</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">x</span><span class="p">.</span><span class="n">fmap</span><span class="p">(</span><span class="o">&amp;|</span><span class="n">i</span><span class="o">|</span><span class="w"> </span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">);</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">z</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">x</span><span class="p">.</span><span class="n">bind</span><span class="p">(</span><span class="o">&amp;|</span><span class="n">_</span><span class="o">|</span><span class="w"> </span><span class="n">Applicative</span><span class="p">::</span><span class="n">pure</span><span class="p">(</span><span class="nb">String</span><span class="p">::</span><span class="n">from</span><span class="p">(</span><span class="s">&quot;bound!&quot;</span><span class="p">)));</span>
+
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">x2</span><span class="w"> </span><span class="p">:</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;</span><span class="kt">i32</span><span class="o">&gt;=</span><span class="w"> </span><span class="nb">None</span><span class="p">;</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">y2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">x2</span><span class="p">.</span><span class="n">fmap</span><span class="p">(</span><span class="o">&amp;|</span><span class="n">i</span><span class="o">|</span><span class="w"> </span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">);</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">z2</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">x2</span><span class="p">.</span><span class="n">bind</span><span class="p">(</span><span class="o">&amp;|</span><span class="n">_</span><span class="o">|</span><span class="w"> </span><span class="n">Applicative</span><span class="p">::</span><span class="n">pure</span><span class="p">(</span><span class="nb">String</span><span class="p">::</span><span class="n">from</span><span class="p">(</span><span class="s">&quot;bound!&quot;</span><span class="p">)));</span>
+
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">g</span><span class="p">:</span><span class="w"> </span><span class="nb">Option</span><span class="o">&lt;&amp;</span><span class="k">dyn</span><span class="w"> </span><span class="nb">Fn</span><span class="p">(</span><span class="o">&amp;</span><span class="kt">i32</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">String</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">Some</span><span class="p">(</span><span class="o">&amp;|</span><span class="n">i</span><span class="o">|</span><span class="w"> </span><span class="fm">format!</span><span class="p">(</span><span class="s">&quot;{}={}&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="p">,</span><span class="w"> </span><span class="n">i</span><span class="p">));</span>
+<span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">g_eval</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&lt;</span><span class="nb">Option</span><span class="o">&lt;&amp;</span><span class="k">dyn</span><span class="w"> </span><span class="nb">Fn</span><span class="p">(</span><span class="o">&amp;</span><span class="kt">i32</span><span class="p">)</span><span class="w"> </span><span class="p">-&gt;</span><span class="w"> </span><span class="nb">String</span><span class="o">&gt;</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">Applicative</span><span class="o">&gt;</span><span class="p">::</span><span class="n">ap</span><span class="p">(</span><span class="o">&amp;</span><span class="n">g</span><span class="p">,</span><span class="w"> </span><span class="o">&amp;</span><span class="nb">Some</span><span class="p">(</span><span class="mi">69</span><span class="p">));</span>
+
+<span class="w">    </span><span class="fm">println!</span><span class="p">(</span><span class="s">&quot;x: {:?}, x2: {:?}, y: {:?}, y2: {:?}, z: {:?}, z2: {:?}, geval: {:?}&quot;</span><span class="p">,</span><span class="w"> </span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">x2</span><span class="p">,</span><span class="w"> </span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">y2</span><span class="p">,</span><span class="w"> </span><span class="n">z</span><span class="p">,</span><span class="w"> </span><span class="n">z2</span><span class="p">,</span><span class="w"> </span><span class="n">g_eval</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+</p>
+
+<p>
+Which produces the following output:
+</p>
+
+<p>
+    <div class="highlight"><pre><span></span>x:<span class="w"> </span>Some<span class="o">(</span><span class="m">5</span><span class="o">)</span>,<span class="w"> </span>x2:<span class="w"> </span>None,<span class="w"> </span>y:<span class="w"> </span>Some<span class="o">(</span><span class="m">6</span><span class="o">)</span>,<span class="w"> </span>y2:<span class="w"> </span>None,<span class="w"> </span>z:<span class="w"> </span>Some<span class="o">(</span><span class="s2">&quot;bound!&quot;</span><span class="o">)</span>,<span class="w"> </span>z2:<span class="w"> </span>None,<span class="w"> </span>geval:<span class="w"> </span>Some<span class="o">(</span><span class="s2">&quot;69=69&quot;</span><span class="o">)</span>
+</pre></div>
+
+</p>
+
+<p>
+So yes! You can use higher kinded types in rust. Whether you should I will leave up to you. But it certainly doesn't seem like
+a very attractive option for most projects considering the syntactic noise of the implementation, a typechecker that gets often
+confused and requires help, as well as error messages that don't make much sense. Especially the last is a shame since extremely
+helpful error messages is what rust is known for, and I wholeheartedly agree (under normal circumstances).
+</p>
+
+
+
+
+    
+    <div id="gitalk-container"></div>
+<script>
+const gitalk = new Gitalk({
+  clientID: "a1da1553c3ddbf769a52",
+  clientSecret: "1ad095f6d5d87b7818859fa8184bd422fca65253",
+  repo: 'blog',      // The repository of store comments,
+  owner: 'HugoPeters1024',
+  admin: ['HugoPeters1024'],
+  id: "14",      // Ensure uniqueness and length less than 50
+  number: "14",
+  distractionFreeMode: false  // Facebook-like distraction free mode
+})
+
+gitalk.render('gitalk-container')
+</script>
+    
+  <div class="modified-at"> 
+    <small>last modified: May 29, 2026 at 11:08</small>
+  </div>
+
+
+    </div>
+  </div>
+
+  
+    <footer>
+    Hugo Peters &middot; hpeters1024@gmail.com &middot; running on a raspberry pi 3b+
+</footer>
+  
+
+</body>
+</html>
