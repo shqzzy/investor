@@ -61,7 +61,9 @@ module.exports = {
       BFB: ["BF.B"],
       BFA: ["BF.A"],
       // 加拿大多伦多交易所（TSX）
-      WSP: { symbol: "WSP.TO", sources: ["yahoo", "stooq"] },
+      // stooq 优先：Yahoo 的 chart API 对 .TO 常返回 404（需 cookie/region），
+      // 而 stooq 的加拿大后缀 .ca 是静态 CSV，稳定性更好
+      WSP: { symbol: "WSP.TO", sources: ["stooq", "yahoo"] },
     };
     try {
       return { ...DEFAULT, ...JSON.parse(process.env.TICKER_ALIASES || "{}") };

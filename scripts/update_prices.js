@@ -127,9 +127,13 @@ async function fetchPriceStooq(ticker) {
      · v7/finance/spark  备用接口（限流策略不同，有时能救回来） */
 async function fetchPriceYahoo(ticker) {
   const sym = encodeURIComponent(ticker);
+  // 非美股（如 .TO 加拿大）带上 region/lang 参数，否则 Yahoo 常返回 404
+  const region = /\.to$|\.v$/i.test(ticker) ? "CA" : "US";
+  const lang = region === "CA" ? "en-CA" : "en-US";
+  const qs = "&region=" + region + "&lang=" + lang + "&corsDomain=finance.yahoo.com";
   const endpoints = [
-    (h) => "https://" + h + "/v8/finance/chart/" + sym + "?interval=1d&range=1d",
-    (h) => "https://" + h + "/v7/finance/spark?symbols=" + sym + "&range=1d&interval=1d",
+    (h) => "https://" + h + "/v8/finance/chart/" + sym + "?interval=1d&range=1d" + qs,
+    (h) => "https://" + h + "/v7/finance/spark?symbols=" + sym + "&range=1d&interval=1d" + qs,
   ];
   const hosts = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
 
@@ -197,6 +201,7 @@ async function fetchPrice(ticker, ignoreCooldown = false) {
   let lastErr = null;
   let sawRateLimit = false;
   let attempted = 0;
+  const trail = []; // 记录每个源的失败原因，便于排查
 
   for (const v of variantsOf(ticker)) {
     const code = v.code;
@@ -206,6 +211,7 @@ async function fetchPrice(ticker, ignoreCooldown = false) {
       if (!fn) continue;
       if (!ignoreCooldown && isCooling(name)) {
         log("  ↳", code, name, "冷却中，跳过");
+        trail.push(name + "（冷却中）");
         continue;
       }
       attempted++;
@@ -219,6 +225,7 @@ async function fetchPrice(ticker, ignoreCooldown = false) {
           cooldownUntil.set(name, Date.now() + COOLDOWN_MS);
         }
         log("  ↳", code, name, "失败：" + e.message);
+        trail.push(name + "(" + code + "): " + e.message);
       }
     }
   }
@@ -230,11 +237,12 @@ async function fetchPrice(ticker, ignoreCooldown = false) {
     return fetchPrice(ticker, true);
   }
 
-  if (lastErr && sawRateLimit) lastErr.rateLimited = true;
-  throw (
-    lastErr ||
-    new Error("无可用行情源（PRICE_SOURCE=" + config.PRICE_SOURCE + "）")
-  );
+  const err =
+    lastErr || new Error("无可用行情源（PRICE_SOURCE=" + config.PRICE_SOURCE + "）");
+  if (sawRateLimit) err.rateLimited = true;
+  // 把各源的失败原因附在错误信息里，日志里一眼能看出是哪个环节断了
+  if (trail.length) err.message = err.message + " ｜ 尝试链路：" + trail.join(" → ");
+  throw err;
 }
 
 /* ---------------- Supabase ---------------- */
