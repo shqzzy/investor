@@ -62,10 +62,13 @@ jobs:
           date -u '+%Y-%m-%dT%H:%M:%SZ' > .github/runlog/last-run.txt
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config pull.rebase true
           git add .github/runlog/last-run.txt
           if git diff --cached --quiet; then
             echo "无变化，跳过提交"
           else
             git commit -m "chore(keep-alive): $(date -u '+%Y-%m-%d %H:%M UTC')"
-            git push
+            # 先拉取远端最新变更再推送，避免"needs to pull"冲突
+            git pull --rebase origin ${GITHUB_REF_NAME} || true
+            git push origin HEAD:${GITHUB_REF_NAME} || echo "推送失败（不影响保活结果）"
           fi
