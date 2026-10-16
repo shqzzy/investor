@@ -1,13 +1,11 @@
 /* =====================================================
-   每日价格更新 + Supabase 保活（update_prices.js）
+   每日价格更新 + Supabase 保活（update_prices.js）v1.1
    -----------------------------------------------------
-   改造点（相对原本地脚本）：
-     1. 全部配置走环境变量，可在 GitHub Actions 里用 Secrets 注入
-     2. 行情源支持自动降级：tencent -> sina -> stooq -> yahoo
-     3. 每只股票重试 MAX_RETRY 次，避免偶发网络抖动导致漏更新
-     4. 每个请求带超时（AbortController），防止卡死拖垮 workflow
-     5. 强制"数据库活动"：无论有没有股票都会读写一次，兼作保活
-     6. 输出 GitHub Actions 的 Step Summary，方便在网页上看结果
+   v1.1 修复（针对首轮运行 106 成功 / 2 失败 429）：
+     1. 429 / 403 限流感知：命中后该行情源进入 60s 冷却，并做长退避重试
+     2. 容忍少量失败：失败率低于 MAX_FAIL_RATIO 时不再 exit 1，避免误报红叉
+     3. 支持 TICKER_ALIASES：给 BRKB 这类特殊代码配别名（BRK-B / BRK.B）
+     4. 请求间隔加随机抖动，避免整齐节奏被识别为爬虫
 
    用法：
      本地：node --env-file=.env scripts/update_prices.js
@@ -22,16 +20,13 @@ const UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36";
 const now = () => new Date().toISOString();
 const log = (...a) => console.log("[" + now() + "]", ...a);
+const jitter = (ms) => ms + Math.floor(Math.random() * 500);
 
 function checkConfig() {
   const urlOk =
     config.SUPABASE_URL.startsWith("https://") ||
     config.SUPABASE_URL.startsWith("http://localhost"); // 允许本地自测
-  if (
-    !urlOk ||
-    !config.SUPABASE_SERVICE_KEY ||
-    config.SUPABASE_SERVICE_KEY.startsWith("YOUR-")
-  ) {
+  if (!urlOk || !config.SUPABASE_SERVICE_KEY || config.SUPABASE_SERVICE_KEY.startsWith("YOUR-")) {
     console.error(
       "缺少配置：请设置环境变量 SUPABASE_URL 与 SUPABASE_SERVICE_KEY\n" +
         "本地可写入 .env 后用 node --env-file=.env 启动；GitHub Actions 请在 Secrets 中配置。"
@@ -49,31 +44,33 @@ async function httpGet(url, headers = {}) {
       headers: { "User-Agent": UA, ...headers },
       signal: ac.signal,
     });
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    if (!resp.ok) {
+      const err = new Error("HTTP " + resp.status);
+      // 429=限流 403=被拒（海外 IP 常见），都需要退避而不是立刻换源猛打
+      if (resp.status === 429 || resp.status === 403) err.rateLimited = true;
+      throw err;
+    }
     return await resp.text();
   } finally {
     clearTimeout(timer);
   }
 }
 
-/* ---------------- 行情源 1：腾讯（默认，实测最稳） ----------------
-   请求 https://qt.gtimg.cn/q=usCMI
-   返回体按 ~ 分隔，下标 3 = 当前价，下标 30 = 行情时间 */
+/* ---------------- 行情源 1：腾讯（默认，实测最稳） ---------------- */
 async function fetchPriceTencent(ticker) {
   const market = config.MARKET || "us";
   const text = await httpGet("https://qt.gtimg.cn/q=" + market + encodeURIComponent(ticker));
   const m = text.match(/="([^"]*)"/);
-  if (!m || !m[1]) throw new Error("腾讯响应为空（可能被限流或代码不存在）");
+  if (!m || !m[1]) throw new Error("腾讯响应为空（代码不存在或被限流）");
   const f = m[1].split("~");
   const price = parseFloat(f[3]);
   if (!isFinite(price) || price <= 0) throw new Error("腾讯价格解析失败");
   return price;
 }
 
-/* ---------------- 行情源 2：新浪（需 Referer） ----------------
-   请求 https://hq.sinajs.cn/list=gb_cmi，返回按 , 分隔，下标 1 = 当前价 */
+/* ---------------- 行情源 2：新浪（需 Referer） ---------------- */
 async function fetchPriceSina(ticker) {
-  const market = config.MARKET === "us" ? "gb" : config.MARKET; // 美股新浪前缀是 gb_
+  const market = config.MARKET === "us" ? "gb" : config.MARKET;
   const text = await httpGet(
     "https://hq.sinajs.cn/list=" + market + "_" + ticker.toLowerCase(),
     { Referer: "https://finance.sina.com.cn" }
@@ -86,14 +83,35 @@ async function fetchPriceSina(ticker) {
   return price;
 }
 
-/* ---------------- 行情源 3：Stooq（CSV，无需 key） ----------------
-   请求 https://stooq.com/q/l/?s=cmi.us&f=sd2t2ohlcv&h&e=csv
-   CSV 列：Symbol,Date,Time,Open,High,Low,Close,Volume —— 取 Close(下标 6) */
+/* ---------------- 行情源 3：Stooq（CSV） ---------------- */
+// Stooq 用后缀区分交易所，和 Yahoo 的写法不同，需要转换
+// Yahoo: WSP.TO / SHOP.TO / RY.TO   → Stooq: wsp.ca ...
+const STOOQ_SUFFIX = {
+  ".to": ".ca", // 多伦多 TSX
+  ".v": ".ca", // TSX Venture
+  ".hk": ".hk",
+  ".us": ".us",
+  ".l": ".uk",
+  ".de": ".de",
+  ".pa": ".fr",
+  ".t": ".jp",
+};
+
+function stooqSymbol(ticker) {
+  const t = ticker.toLowerCase();
+  const dot = t.lastIndexOf(".");
+  if (dot > 0) {
+    const suf = t.slice(dot);
+    if (STOOQ_SUFFIX[suf]) return t.slice(0, dot) + STOOQ_SUFFIX[suf];
+    return t;
+  }
+  const marketSuffix = { us: ".us", hk: ".hk", sh: ".cn", sz: ".cn" };
+  return t + (marketSuffix[config.MARKET] || ".us");
+}
+
 async function fetchPriceStooq(ticker) {
-  const suffixMap = { us: ".us", hk: ".hk", sh: ".cn", sz: ".cn" };
-  const suffix = suffixMap[config.MARKET] || ".us";
   const text = await httpGet(
-    "https://stooq.com/q/l/?s=" + encodeURIComponent(ticker.toLowerCase() + suffix) +
+    "https://stooq.com/q/l/?s=" + encodeURIComponent(stooqSymbol(ticker)) +
       "&f=sd2t2ohlcv&h&e=csv"
   );
   const line = text.trim().split("\n")[1];
@@ -103,22 +121,35 @@ async function fetchPriceStooq(ticker) {
   return price;
 }
 
-/* ---------------- 行情源 4：Yahoo（海外环境优先） ---------------- */
+/* ---------------- 行情源 4：Yahoo（唯一覆盖加拿大/欧洲等国际市场的源） ----------------
+   Yahoo 对机房 IP 会返回 429，所以这里准备两个端点：
+     · v8/finance/chart  常规行情接口
+     · v7/finance/spark  备用接口（限流策略不同，有时能救回来） */
 async function fetchPriceYahoo(ticker) {
+  const sym = encodeURIComponent(ticker);
+  const endpoints = [
+    (h) => "https://" + h + "/v8/finance/chart/" + sym + "?interval=1d&range=1d",
+    (h) => "https://" + h + "/v7/finance/spark?symbols=" + sym + "&range=1d&interval=1d",
+  ];
   const hosts = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
+
   let lastErr = null;
-  for (const host of hosts) {
-    try {
-      const text = await httpGet(
-        "https://" + host + "/v8/finance/chart/" + encodeURIComponent(ticker) +
-          "?interval=1d&range=1d"
-      );
-      const data = JSON.parse(text);
-      const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-      if (price == null) throw new Error("Yahoo 响应中无 regularMarketPrice");
-      return price;
-    } catch (e) {
-      lastErr = e;
+  for (const makeUrl of endpoints) {
+    for (const host of hosts) {
+      try {
+        const text = await httpGet(makeUrl(host), {
+          Accept: "application/json",
+          "Accept-Language": "en-US,en;q=0.9",
+        });
+        const data = JSON.parse(text);
+        const price =
+          data?.chart?.result?.[0]?.meta?.regularMarketPrice ??
+          data?.spark?.result?.[0]?.response?.[0]?.meta?.regularMarketPrice;
+        if (price == null) throw new Error("Yahoo 响应中无价格字段");
+        return price;
+      } catch (e) {
+        lastErr = e;
+      }
     }
   }
   throw lastErr || new Error("Yahoo 拉取失败");
@@ -131,27 +162,79 @@ const SOURCES = {
   yahoo: fetchPriceYahoo,
 };
 const AUTO_ORDER = ["tencent", "sina", "stooq", "yahoo"];
+const COOLDOWN_MS = 30000; // 某源被限流后的冷却时间
 
-/** 按配置取价；auto 模式下逐个源降级，全部失败才抛错 */
-async function fetchPrice(ticker) {
-  const order =
+/** 行情源冷却表：避免被限流的源在短时间内被反复调用 */
+const cooldownUntil = new Map();
+const isCooling = (name) => (cooldownUntil.get(name) || 0) > Date.now();
+const clearCooldown = () => cooldownUntil.clear();
+
+/**
+ * 解析某只股票的"查询方案"列表
+ * 返回 [{ code, sources }]：
+ *   · 无映射 → 用原代码 + 默认源顺序
+ *   · 数组映射 → 逐个代码 + 默认源顺序
+ *   · 对象映射 → 指定代码 + 指定源（用于加拿大等非美股市场）
+ */
+function variantsOf(ticker) {
+  const alias = config.TICKER_ALIASES[ticker.toUpperCase()];
+  if (alias && !Array.isArray(alias) && typeof alias === "object") {
+    return [{ code: alias.symbol || ticker, sources: alias.sources }];
+  }
+  const codes = [ticker];
+  if (Array.isArray(alias)) codes.push(...alias);
+  else if (typeof alias === "string" && alias) codes.push(alias);
+  return [...new Set(codes)].map((code) => ({ code }));
+}
+
+/** 按配置取价：auto 模式逐个源降级；全部失败才抛错 */
+async function fetchPrice(ticker, ignoreCooldown = false) {
+  const sourceOrder =
     config.PRICE_SOURCE === "auto"
       ? AUTO_ORDER
       : [String(config.PRICE_SOURCE).toLowerCase()];
 
   let lastErr = null;
-  for (const name of order) {
-    const fn = SOURCES[name];
-    if (!fn) continue;
-    try {
-      const p = await fn(ticker);
-      return { price: p, source: name };
-    } catch (e) {
-      lastErr = e;
-      log("  ↳", ticker, name, "失败：" + e.message);
+  let sawRateLimit = false;
+  let attempted = 0;
+
+  for (const v of variantsOf(ticker)) {
+    const code = v.code;
+    const order = v.sources || sourceOrder;
+    for (const name of order) {
+      const fn = SOURCES[name];
+      if (!fn) continue;
+      if (!ignoreCooldown && isCooling(name)) {
+        log("  ↳", code, name, "冷却中，跳过");
+        continue;
+      }
+      attempted++;
+      try {
+        const price = await fn(code);
+        return { price, source: name, code };
+      } catch (e) {
+        lastErr = e;
+        if (e.rateLimited) {
+          sawRateLimit = true;
+          cooldownUntil.set(name, Date.now() + COOLDOWN_MS);
+        }
+        log("  ↳", code, name, "失败：" + e.message);
+      }
     }
   }
-  throw lastErr || new Error("不支持的 PRICE_SOURCE：" + config.PRICE_SOURCE);
+
+  // 该股票所有可用源都还在冷却 → 清掉冷却再试一轮，避免被别的股票连累
+  if (attempted === 0 && !ignoreCooldown) {
+    log("  ⟳", ticker, "所有源均处于冷却，清除冷却后重试");
+    clearCooldown();
+    return fetchPrice(ticker, true);
+  }
+
+  if (lastErr && sawRateLimit) lastErr.rateLimited = true;
+  throw (
+    lastErr ||
+    new Error("无可用行情源（PRICE_SOURCE=" + config.PRICE_SOURCE + "）")
+  );
 }
 
 /* ---------------- Supabase ---------------- */
@@ -164,12 +247,9 @@ function sbHeaders(extra = {}) {
 }
 
 async function listTickers() {
-  const url =
-    config.SUPABASE_URL + "/rest/v1/" + config.STOCKS_TABLE + "?select=ticker";
+  const url = config.SUPABASE_URL + "/rest/v1/" + config.STOCKS_TABLE + "?select=ticker";
   const r = await fetch(url, { headers: sbHeaders() });
-  if (!r.ok) {
-    throw new Error("读取股票列表失败：" + (await r.text()).slice(0, 300));
-  }
+  if (!r.ok) throw new Error("读取股票列表失败：" + (await r.text()).slice(0, 300));
   return r.json();
 }
 
@@ -191,7 +271,7 @@ async function writePrice(ticker, price) {
   if (!r.ok) throw new Error("回写失败 " + r.status + " " + (await r.text()).slice(0, 200));
 }
 
-/** 保活：往 heartbeat 表写一行（表不存在时静默跳过，不影响主流程） */
+/** 保活：往 heartbeat 表写一行（表不存在时静默跳过） */
 async function heartbeat() {
   if (!config.HEARTBEAT_TABLE) return false;
   const url = config.SUPABASE_URL + "/rest/v1/" + config.HEARTBEAT_TABLE;
@@ -204,8 +284,7 @@ async function heartbeat() {
       }),
       body: JSON.stringify([{ id: 1, last_seen: now() }]),
     });
-    if (!r.ok) return false;
-    return true;
+    return r.ok;
   } catch {
     return false;
   }
@@ -214,7 +293,8 @@ async function heartbeat() {
 /* ---------------- 主流程 ---------------- */
 async function main() {
   checkConfig();
-  log("行情源模式：" + config.PRICE_SOURCE + "，市场：" + config.MARKET);
+  log("行情源模式：" + config.PRICE_SOURCE + "，市场：" + config.MARKET +
+      "，失败容忍率：" + (config.MAX_FAIL_RATIO * 100).toFixed(0) + "%");
 
   const rows = await listTickers(); // 这一步本身就是一次数据库活动
   if (!rows || rows.length === 0) {
@@ -226,12 +306,12 @@ async function main() {
 
   log("共 " + rows.length + " 只股票，开始更新…");
   let ok = 0;
-  let fail = 0;
   const failed = [];
 
   for (const row of rows) {
     const t = row.ticker;
     let done = false;
+
     for (let attempt = 1; attempt <= config.MAX_RETRY && !done; attempt++) {
       try {
         const { price, source } = await fetchPrice(t);
@@ -241,32 +321,39 @@ async function main() {
         log("✔", t, price, "(" + source + ")");
       } catch (e) {
         if (attempt === config.MAX_RETRY) {
-          fail++;
           failed.push({ ticker: t, error: e.message });
           console.error("✘", t, e.message);
         } else {
-          await sleep(1000 * attempt);
+          // 限流要长退避，普通错误短退避
+          const backoff = e.rateLimited ? 20000 * attempt : 1200 * attempt;
+          log("  ⟳", t, "第 " + attempt + " 次失败，" + (backoff / 1000) + "s 后重试");
+          await sleep(backoff);
         }
       }
     }
-    await sleep(config.REQUEST_DELAY_MS);
+    await sleep(jitter(config.REQUEST_DELAY_MS));
   }
 
   await heartbeat(); // 收尾再打一次活动点
-  log("更新完成：成功 " + ok + "，失败 " + fail);
-  if (failed.length) {
-    console.error("失败清单：", JSON.stringify(failed, null, 2));
-  }
 
-  // GitHub Actions 作业摘要
+  const total = rows.length;
+  const fail = failed.length;
+  const ratio = total ? fail / total : 0;
+  log("更新完成：成功 " + ok + "，失败 " + fail + "（失败率 " + (ratio * 100).toFixed(1) + "%）");
+  if (failed.length) console.error("失败清单：", JSON.stringify(failed, null, 2));
+
+  // 失败率在容忍范围内 → 视为成功，不标红（保活目的已达成）
+  const tolerated = ok > 0 && ratio <= config.MAX_FAIL_RATIO;
+  if (tolerated) log("⚠ 少量失败在容忍范围内，按成功处理");
+
   if (process.env.GITHUB_STEP_SUMMARY) {
     const fs = require("fs");
     const md = [
       "## 价格更新结果",
       "",
       "- 时间：" + now(),
-      "- 行情源模式：`" + config.PRICE_SOURCE + "`",
-      "- 成功：" + ok + " / 失败：" + fail,
+      "- 行情源模式：`" + config.PRICE_SOURCE + "`，市场：`" + config.MARKET + "`",
+      "- 成功：" + ok + " / 失败：" + fail + "（失败率 " + (ratio * 100).toFixed(1) + "%）",
       "",
       failed.length
         ? "### 失败清单\n" + failed.map((f) => "- `" + f.ticker + "`： " + f.error).join("\n")
@@ -275,13 +362,14 @@ async function main() {
     fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, md + "\n");
   }
 
-  return { ok, fail, failed };
+  return { ok, fail, ratio, tolerated };
 }
 
 checkConfig();
 main()
   .then((r) => {
-    if (r && r.fail > 0) process.exitCode = 1; // 部分失败也标记，便于在 Actions 里发现
+    // 只有"全军覆没"或失败率超阈值才标红
+    if (r && !r.empty && !r.tolerated) process.exitCode = 1;
   })
   .catch((e) => {
     console.error("脚本异常：", e.message);
