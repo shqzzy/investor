@@ -1,0 +1,68 @@
+name: Supabase 每日价格更新 & 保活
+
+on:
+  schedule:
+    # GitHub Actions 的 cron 用 UTC 时间，北京时间 = UTC + 8
+    # 刻意避开整点（:00），因为整点排队最久，通常会延迟 5~30 分钟
+    - cron: '17 22 * * *'   # 北京时间 06:17 —— 美股收盘后，正式更新价格
+    - cron: '23 13 * * *'   # 北京时间 21:23 —— 二次保活，兜底防暂停
+  workflow_dispatch:        # 允许在网页上手动点一次，方便测试
+    inputs:
+      source:
+        description: '行情源'
+        required: false
+        default: 'auto'
+        type: choice
+        options: [auto, tencent, sina, stooq, yahoo]
+      market:
+        description: '市场（us 美股 / hk 港股 / sh / sz）'
+        required: false
+        default: 'us'
+        type: string
+
+permissions:
+  contents: write   # 需要写权限来提交 last-run.txt（防止 workflow 被 GitHub 停用）
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 准备 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'   # Node 18+ 自带 fetch，无需 npm install
+
+      - name: 保活检查
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/keep_alive.js
+
+      - name: 更新价格
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          PRICE_SOURCE: ${{ github.event.inputs.source || 'auto' }}
+          MARKET: ${{ github.event.inputs.market || 'us' }}
+          REQUEST_DELAY_MS: '1500'
+        run: node scripts/update_prices.js
+
+      - name: 提交运行记录（防止 Actions 因仓库 60 天无提交被自动停用）
+        if: always()
+        run: |
+          mkdir -p .github/runlog
+          date -u '+%Y-%m-%dT%H:%M:%SZ' > .github/runlog/last-run.txt
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/runlog/last-run.txt
+          if git diff --cached --quiet; then
+            echo "无变化，跳过提交"
+          else
+            git commit -m "chore(keep-alive): $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
